@@ -1,0 +1,428 @@
+---
+title: 'Validator Traces'
+api: 'GET/POST /v1/exporter/traces/validator'
+description: 'Retrieve detailed validator duty execution traces including consensus rounds'
+---
+
+<Warning>
+This endpoint requires running the node with the `--exporter` flag enabled.
+</Warning>
+
+Returns comprehensive duty execution traces for individual validators, including QBFT consensus rounds, decided messages, pre/post-consensus signatures, and proposal data.
+
+## Endpoint
+
+```
+GET /v1/exporter/traces/validator
+POST /v1/exporter/traces/validator
+```
+
+## Request Parameters
+
+<ParamField query="from" type="integer" required>
+  Starting slot (inclusive)
+</ParamField>
+
+<ParamField query="to" type="integer" required>
+  Ending slot (inclusive)
+</ParamField>
+
+<ParamField query="roles" type="array" required>
+  Beacon roles to include: `ATTESTER`, `AGGREGATOR`, `PROPOSER`, `SYNC_COMMITTEE`, `SYNC_COMMITTEE_CONTRIBUTION`
+</ParamField>
+
+<ParamField query="pubkeys" type="array">
+  Validator public keys (hex, 96 characters each)
+</ParamField>
+
+<ParamField query="indices" type="array">
+  Validator indices (integers)
+</ParamField>
+
+## Response
+
+<ResponseField name="data" type="array" required>
+  Array of validator trace objects
+  
+  <Expandable title="validator trace object">
+    <ResponseField name="slot" type="string">
+      Duty slot (numeric string)
+    </ResponseField>
+    
+    <ResponseField name="role" type="string">
+      Beacon role (e.g., `"ATTESTER"`)
+    </ResponseField>
+    
+    <ResponseField name="validator" type="string">
+      Validator index (numeric string)
+    </ResponseField>
+    
+    <ResponseField name="committeeID" type="string">
+      32-byte committee identifier (hex), when applicable
+    </ResponseField>
+    
+    <ResponseField name="consensus" type="array">
+      Per-round QBFT consensus messages
+      
+      <Expandable title="round object">
+        <ResponseField name="proposal" type="object">
+          Proposal for this round (if any)
+          
+          <Expandable title="proposal properties">
+            <ResponseField name="round" type="integer">Round number</ResponseField>
+            <ResponseField name="ssvRoot" type="string">Proposed root (hex)</ResponseField>
+            <ResponseField name="leader" type="integer">Operator ID of proposer</ResponseField>
+            <ResponseField name="roundChangeJustifications" type="array">Round change messages</ResponseField>
+            <ResponseField name="prepareJustifications" type="array">Prepare messages</ResponseField>
+            <ResponseField name="time" type="string">Timestamp (ISO 8601)</ResponseField>
+          </Expandable>
+        </ResponseField>
+        
+        <ResponseField name="prepares" type="array">
+          Prepare messages received in this round
+        </ResponseField>
+        
+        <ResponseField name="commits" type="array">
+          Commit messages received in this round
+        </ResponseField>
+        
+        <ResponseField name="roundChanges" type="array">
+          Round change messages that led to this round
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    
+    <ResponseField name="decideds" type="array">
+      Decided messages for this duty
+      
+      <Expandable title="decided object">
+        <ResponseField name="round" type="integer">Round where decision was made</ResponseField>
+        <ResponseField name="ssvRoot" type="string">Decided root (hex)</ResponseField>
+        <ResponseField name="signers" type="array">Operator IDs that signed</ResponseField>
+        <ResponseField name="time" type="string">Timestamp (ISO 8601)</ResponseField>
+      </Expandable>
+    </ResponseField>
+    
+    <ResponseField name="pre" type="array">
+      Pre-consensus partial signature messages
+    </ResponseField>
+    
+    <ResponseField name="post" type="array">
+      Post-consensus partial signature messages
+    </ResponseField>
+    
+    <ResponseField name="proposalData" type="string">
+      Hex-encoded proposal payload (for PROPOSER duties)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="schedule" type="array">
+  Scheduled duties for requested validators
+  
+  <Expandable title="schedule entry">
+    <ResponseField name="slot" type="integer">Slot number</ResponseField>
+    <ResponseField name="validator" type="integer">Validator index</ResponseField>
+    <ResponseField name="roles" type="array">Assigned roles for this slot</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="errors" type="array">
+  Non-fatal errors (e.g., "duty data unavailable for slot 123457")
+</ResponseField>
+
+## Example Request
+
+```bash
+curl -X POST http://localhost:16000/v1/exporter/traces/validator \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": 123456,
+    "to": 123458,
+    "roles": ["ATTESTER", "PROPOSER"],
+    "indices": [42]
+  }'
+```
+
+## Example Response
+
+```json
+{
+  "data": [
+    {
+      "slot": "123456",
+      "role": "ATTESTER",
+      "validator": "42",
+      "committeeID": "a1b2c3d4e5f6...",
+      "consensus": [
+        {
+          "proposal": {
+            "round": 1,
+            "ssvRoot": "0x1234567890abcdef...",
+            "leader": 1,
+            "roundChangeJustifications": [],
+            "prepareJustifications": [],
+            "time": "2024-03-04T12:34:56.789Z"
+          },
+          "prepares": [
+            {
+              "round": 1,
+              "ssvRoot": "0x1234567890abcdef...",
+              "signer": 1,
+              "time": "2024-03-04T12:34:56.890Z"
+            },
+            {
+              "round": 1,
+              "ssvRoot": "0x1234567890abcdef...",
+              "signer": 2,
+              "time": "2024-03-04T12:34:56.891Z"
+            },
+            {
+              "round": 1,
+              "ssvRoot": "0x1234567890abcdef...",
+              "signer": 3,
+              "time": "2024-03-04T12:34:56.892Z"
+            }
+          ],
+          "commits": [
+            {
+              "round": 1,
+              "ssvRoot": "0x1234567890abcdef...",
+              "signer": 1,
+              "time": "2024-03-04T12:34:57.100Z"
+            },
+            {
+              "round": 1,
+              "ssvRoot": "0x1234567890abcdef...",
+              "signer": 2,
+              "time": "2024-03-04T12:34:57.101Z"
+            },
+            {
+              "round": 1,
+              "ssvRoot": "0x1234567890abcdef...",
+              "signer": 3,
+              "time": "2024-03-04T12:34:57.102Z"
+            }
+          ],
+          "roundChanges": []
+        }
+      ],
+      "decideds": [
+        {
+          "round": 1,
+          "ssvRoot": "0x1234567890abcdef...",
+          "signers": [1, 2, 3, 4],
+          "time": "2024-03-04T12:34:57.500Z"
+        }
+      ],
+      "pre": [
+        {
+          "ssvRoot": "0x1234567890abcdef...",
+          "signer": 1,
+          "time": "2024-03-04T12:34:56.500Z"
+        },
+        {
+          "ssvRoot": "0x1234567890abcdef...",
+          "signer": 2,
+          "time": "2024-03-04T12:34:56.501Z"
+        }
+      ],
+      "post": [
+        {
+          "ssvRoot": "0x1234567890abcdef...",
+          "signer": 1,
+          "time": "2024-03-04T12:34:58.000Z"
+        },
+        {
+          "ssvRoot": "0x1234567890abcdef...",
+          "signer": 2,
+          "time": "2024-03-04T12:34:58.001Z"
+        }
+      ]
+    }
+  ],
+  "schedule": [
+    {
+      "slot": 123456,
+      "validator": 42,
+      "roles": ["ATTESTER"]
+    },
+    {
+      "slot": 123457,
+      "validator": 42,
+      "roles": ["ATTESTER"]
+    }
+  ],
+  "errors": []
+}
+```
+
+## Understanding Consensus Traces
+
+### QBFT Rounds
+
+The `consensus` array shows the QBFT consensus process:
+
+1. **Proposal**: Leader proposes a value
+2. **Prepares**: Operators validate and broadcast prepare messages
+3. **Commits**: After seeing threshold prepares, operators broadcast commits
+4. **Decision**: After threshold commits, duty is decided
+
+### Round Changes
+
+If consensus doesn't complete in round 1, operators trigger round changes:
+
+```json
+{
+  "consensus": [
+    {
+      "proposal": null,
+      "prepares": [],
+      "commits": [],
+      "roundChanges": [
+        {
+          "round": 2,
+          "ssvRoot": "0x...",
+          "signer": 1,
+          "preparedRound": 1,
+          "prepareMessages": [...],
+          "time": "2024-03-04T12:35:00.000Z"
+        }
+      ]
+    }
+  ]
+}
+```
+
+Multiple rounds indicate:
+
+- Network delays
+- Leader failures
+- Disagreement on proposed values
+
+### Pre/Post Consensus
+
+- **Pre**: Partial signatures before consensus (e.g., attestation data signatures)
+- **Post**: Partial signatures after consensus (e.g., aggregated signatures)
+
+## Use Cases
+
+### Debug Failed Duties
+
+```bash
+# Check why a duty failed
+curl -X POST http://localhost:16000/v1/exporter/traces/validator \
+  -H "Content-Type: application/json" \
+  -d '{"from": 123456, "to": 123456, "roles": ["ATTESTER"], "indices": [42]}' \
+  | jq '.data[0] | {slot, rounds: (.consensus | length), decided: (.decideds | length)}'
+```
+
+### Analyze Consensus Performance
+
+```bash
+# Count rounds per duty (1 = optimal, >1 = delays)
+curl "http://localhost:16000/v1/exporter/traces/validator?from=123400&to=123500&roles=ATTESTER&indices=42" \
+  | jq '.data[] | {slot, rounds: (.consensus | length)}'
+```
+
+### Identify Slow Operators
+
+```bash
+# Find operators with late messages
+curl -X POST http://localhost:16000/v1/exporter/traces/validator \
+  -H "Content-Type: application/json" \
+  -d '{"from": 123456, "to": 123456, "roles": ["ATTESTER"], "indices": [42]}' \
+  | jq '.data[0].consensus[0].prepares | sort_by(.time)'
+```
+
+### Track Proposal Data
+
+```bash
+# Extract proposal payloads
+curl "http://localhost:16000/v1/exporter/traces/validator?from=123456&to=123460&roles=PROPOSER&indices=42" \
+  | jq '.data[] | select(.proposalData != null) | {slot, proposalData}'
+```
+
+## Schedule Field
+
+The `schedule` array shows which duties were assigned to the validator in the requested slot range:
+
+```json
+{
+  "schedule": [
+    {
+      "slot": 123456,
+      "validator": 42,
+      "roles": ["ATTESTER", "AGGREGATOR"]
+    }
+  ]
+}
+```
+
+Compare with `data` to identify:
+
+- **Scheduled but not executed**: Missing trace for scheduled duty (failure)
+- **Executed but not scheduled**: Unexpected trace (shouldn't happen)
+- **Multiple roles per slot**: Validator had multiple duties
+
+## Error Handling
+
+### Missing Exporter Flag (varies)
+
+If the node is not running with `--exporter`:
+
+- The endpoint may not be registered (404)
+- Or returns limited data
+
+Check server logs or node configuration.
+
+### Invalid Parameters (400)
+
+```json
+{
+  "status": "Bad Request",
+  "error": "invalid pubkey length: abc"
+}
+```
+
+### Partial Data (200 with errors)
+
+```json
+{
+  "data": [...],
+  "errors": [
+    "duty data unavailable for slot 123457",
+    "failed to enrich trace for validator 42 at slot 123458"
+  ]
+}
+```
+
+The response is still successful - check `errors` for issues.
+
+## Performance Considerations
+
+### Query Size
+
+Validator traces are verbose. For best performance:
+
+- Query ≤ 50 slots per request
+- Filter by specific validators
+- Limit roles to what you need
+
+### Storage Requirements
+
+Full validator traces require significant storage:
+
+- ~1-5 MB per validator per slot (depends on consensus complexity)
+- Configure retention policies to manage disk usage
+
+## Related Endpoints
+
+- [Decided Duties](/api/exporter/decided) - Simpler decided-only data
+- [Committee Traces](/api/exporter/committee) - Committee-level aggregated traces
+
+## Source Code Reference
+
+Implementation: `/home/daytona/workspace/source/api/handlers/exporter/validator_http.go:23`
+
+Model: `/home/daytona/workspace/source/api/handlers/exporter/validator_model.go:17`

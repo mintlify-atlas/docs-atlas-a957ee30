@@ -1,0 +1,225 @@
+---
+title: Introduction
+description: Learn about SSV Node, a secure and scalable staking infrastructure for distributed Ethereum validators
+---
+
+## What is SSV Node?
+
+SSV Node is the core implementation of the **Secret Shared Validators (SSV)** protocol - a secure and scalable staking infrastructure that powers the future of distributed Ethereum re/staking. It enables validators to run in a decentralized, trustless manner across multiple operators, eliminating single points of failure and enhancing network resilience.
+
+<Info>
+SSV uses an MPC (Multi-Party Computation) threshold scheme with a consensus layer on top that governs the network, ensuring robustness and fault tolerance.
+</Info>
+
+## Why SSV Node?
+
+Traditional Ethereum validator setups suffer from several critical challenges:
+
+- **Single Point of Failure**: If your validator goes offline, you lose staking rewards and face potential penalties
+- **Centralization Risk**: Solo stakers often rely on a single infrastructure provider
+- **Operational Complexity**: Running validators requires significant technical expertise and constant monitoring
+- **Key Management**: Validator keys represent a critical security risk if compromised
+
+SSV Node solves these problems through distributed validator technology.
+
+## Key Benefits
+
+<CardGroup cols={2}>
+  <Card title="Fault Tolerance" icon="shield-check">
+    Validators continue operating even if some operators go offline. The network can tolerate up to f faulty nodes in a 3f+1 configuration.
+  </Card>
+  
+  <Card title="Enhanced Security" icon="lock">
+    Validator keys are split using Shamir Secret Sharing. No single operator ever holds the complete key, eliminating single points of compromise.
+  </Card>
+  
+  <Card title="Decentralization" icon="network-wired">
+    Distribute validator operations across multiple independent operators, reducing reliance on any single infrastructure provider.
+  </Card>
+  
+  <Card title="Slashing Protection" icon="shield-halved">
+    Built-in slashing protection ensures validators never sign conflicting attestations or proposals, even in distributed scenarios.
+  </Card>
+</CardGroup>
+
+## How It Works
+
+SSV Node implements a sophisticated multi-layer architecture that coordinates validator duties across multiple operators:
+
+### 1. Key Splitting
+
+Validator keys are split into shares using **Shamir Secret Sharing (SSS)**. Each operator receives one share, and a threshold number of shares (typically 2/3+1) are required to perform validator duties.
+
+```bash
+# Generate threshold keys for 4 operators
+./bin/ssvnode create-threshold --count 4 --private-key <validator-private-key>
+```
+
+### 2. Consensus-Based Signing
+
+When a validator duty arrives (attestation, block proposal, or sync committee), operators:
+
+1. **Pre-consensus**: Each operator signs with their key share
+2. **Consensus**: Operators reach Byzantine fault-tolerant agreement using **QBFT (Istanbul BFT)** consensus
+3. **Post-consensus**: Signatures are aggregated into a valid validator signature
+4. **Submission**: The final signature is submitted to the Beacon Chain
+
+<Note>
+The consensus layer ensures that even if some operators are malicious or offline, the validator continues functioning correctly.
+</Note>
+
+### 3. P2P Communication
+
+Operators communicate through a **libp2p-based peer-to-peer network** that includes:
+
+- **Discovery**: Using discv5 protocol to find other operators
+- **GossipSub**: For efficient message broadcasting
+- **Subnets**: Isolated communication channels per validator for scalability
+
+## Core Features
+
+### Byzantine Fault Tolerance
+
+SSV Node implements **Istanbul BFT (QBFT)** consensus, which can tolerate up to ⌊(n-1)/3⌋ faulty nodes. This means:
+
+- **4 operators**: Tolerates 1 fault
+- **7 operators**: Tolerates 2 faults
+- **13 operators**: Tolerates 4 faults
+
+<Warning>
+At least 3f+1 operators are required, where f is the number of tolerated faults. A 4-operator setup (f=1) is the minimum recommended configuration.
+</Warning>
+
+### Duty Execution
+
+SSV Node handles all Ethereum validator duties:
+
+- **Attestations**: Vote on the current state of the chain every epoch
+- **Block Proposals**: Create and propose new blocks when selected
+- **Sync Committee**: Participate in light client support when assigned
+- **Aggregation**: Aggregate attestations from other validators
+
+### Smart Contract Integration
+
+The node monitors the **SSV smart contract** on Ethereum mainnet for:
+
+- Validator registrations and deregistrations
+- Operator metadata updates
+- Fee recipient configurations
+- Network parameter changes
+
+### Observability
+
+Built-in observability features include:
+
+- **Prometheus metrics** for monitoring validator performance
+- **OpenTelemetry traces** for debugging consensus and duty flow
+- **Structured logging** with configurable levels
+- **Health check endpoints** for liveness monitoring
+
+## Technology Stack
+
+SSV Node is built with production-grade technologies:
+
+- **Language**: Go 1.24+
+- **Consensus**: Istanbul BFT (QBFT) implementation
+- **Cryptography**: BLS signatures, Shamir Secret Sharing
+- **Networking**: libp2p (GossipSub, discv5)
+- **Storage**: BadgerDB/PebbleDB for state persistence
+- **Encoding**: SSZ (Simple Serialize) for efficient data structures
+
+## Use Cases
+
+### For Stakers
+
+- Reduce validator downtime through distributed operation
+- Eliminate single points of failure in your staking setup
+- Maintain validator operation even during infrastructure issues
+- Diversify across multiple professional operators
+
+### For Operators
+
+- Offer distributed validator services to stakers
+- Build resilient validator infrastructure
+- Participate in the SSV network as a professional operator
+- Earn fees for providing validator operation services
+
+### For Protocols
+
+- Integrate SSV for institutional-grade validator infrastructure
+- Build liquid staking protocols with enhanced security
+- Implement restaking solutions with distributed validator technology
+- Ensure high availability for critical validator sets
+
+## Getting Started
+
+Ready to run an SSV Node? Here's what you need:
+
+1. **Hardware Requirements**: 
+   - 4+ CPU cores
+   - 8+ GB RAM
+   - 50+ GB SSD storage
+   - Stable internet connection
+
+2. **Software Requirements**:
+   - Access to an Ethereum Execution client (Geth, Nethermind, etc.)
+   - Access to a Beacon Chain consensus client (Lighthouse, Prysm, etc.)
+   - Docker (optional, for containerized deployment)
+
+3. **Operator Setup**:
+   - Generate operator keys
+   - Register as an operator in the SSV network
+   - Configure your node with proper settings
+
+<Card title="Node Setup Guide" icon="book" href="/operators/operator-node/node-setup">
+  Follow our comprehensive guide to install and configure your SSV Node
+</Card>
+
+## Security Considerations
+
+<Warning>
+Never share your operator private key or validator key shares. Each operator should only possess their designated share.
+</Warning>
+
+SSV Node implements multiple security layers:
+
+- **Slashing Protection**: Prevents double-signing through database-backed protection
+- **Key Isolation**: Validator keys never exist in complete form on any single machine
+- **Threshold Security**: Requires 2/3+1 operators to compromise a validator
+- **Encrypted Storage**: Operator keys can be stored in encrypted keystore format
+- **Message Validation**: All P2P messages are validated and signed
+
+## Audits
+
+SSV Node has undergone professional security audits:
+
+- [Least Authority Audit (August 2023)](https://github.com/ssvlabs/ssv/blob/main/audits/Least%20Authority.pdf)
+
+## Community and Support
+
+Join the SSV community to get help and stay updated:
+
+- **Discord**: Join our active community at [discord.gg/5vT22pRBrf](https://discord.gg/5vT22pRBrf)
+- **Documentation**: [docs.ssv.network](https://docs.ssv.network)
+- **GitHub**: [github.com/ssvlabs/ssv](https://github.com/ssvlabs/ssv)
+- **API Reference**: [pkg.go.dev/github.com/ssvlabs/ssv](https://pkg.go.dev/github.com/ssvlabs/ssv)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Architecture" icon="sitemap" href="/architecture">
+    Explore the technical architecture and system components
+  </Card>
+  
+  <Card title="Node Setup" icon="server" href="/operators/operator-node/node-setup">
+    Install and configure your SSV Node
+  </Card>
+  
+  <Card title="Developer Guide" icon="code" href="/developers/dev-guide">
+    Learn how to contribute to SSV Node development
+  </Card>
+  
+  <Card title="API Documentation" icon="book-open" href="https://ssvlabs.github.io/ssv/">
+    Explore the complete API reference
+  </Card>
+</CardGroup>

@@ -1,0 +1,161 @@
+---
+title: 'Peer Management'
+api: 'GET /v1/node/peers'
+description: 'List all peers connected to the SSV node'
+---
+
+Returns detailed information about all peers in the P2P network, including connection details, subnet subscriptions, and software versions.
+
+## Endpoint
+
+```
+GET /v1/node/peers
+```
+
+## Response
+
+Returns an array of peer objects:
+
+<ResponseField name="id" type="string" required>
+  Peer's libp2p peer ID (base58-encoded)
+</ResponseField>
+
+<ResponseField name="addresses" type="array" required>
+  List of known multiaddresses for this peer
+</ResponseField>
+
+<ResponseField name="connections" type="array" required>
+  Active connection details for this peer
+  
+  <Expandable title="connection object">
+    <ResponseField name="address" type="string">
+      Remote multiaddress of the connection
+    </ResponseField>
+    
+    <ResponseField name="direction" type="string">
+      Connection direction: `"inbound"` or `"outbound"`
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="connectedness" type="string" required>
+  Connection state: `"Connected"`, `"NotConnected"`, `"CanConnect"`, or `"CannotConnect"`
+</ResponseField>
+
+<ResponseField name="subnets" type="string" required>
+  Hex-encoded bitmap of peer's subscribed subnets
+</ResponseField>
+
+<ResponseField name="version" type="string">
+  Peer's SSV node version (if available)
+</ResponseField>
+
+## Example Request
+
+```bash
+curl http://localhost:16000/v1/node/peers
+```
+
+## Example Response
+
+```json
+[
+  {
+    "id": "16Uiu2HAm3BdQzGcvqmYGQJxF1q1G7pzWkVZJZu8X2X7z9A1B2C3D",
+    "addresses": [
+      "/ip4/203.0.113.45/tcp/13001",
+      "/ip4/203.0.113.45/udp/12001/quic"
+    ],
+    "connections": [
+      {
+        "address": "/ip4/203.0.113.45/tcp/13001",
+        "direction": "outbound"
+      }
+    ],
+    "connectedness": "Connected",
+    "subnets": "0x000000000000000000000000000000ff",
+    "version": "v1.3.0"
+  },
+  {
+    "id": "16Uiu2HAmE4F5GHpqrKWQoA7rYiMSbS9QbKvZX3Y4N5M6P7Q8R9S0",
+    "addresses": [
+      "/ip4/198.51.100.20/tcp/13001"
+    ],
+    "connections": [
+      {
+        "address": "/ip4/198.51.100.20/tcp/13001",
+        "direction": "inbound"
+      }
+    ],
+    "connectedness": "Connected",
+    "subnets": "0x00000000000000000000000000000f00",
+    "version": "v1.2.5"
+  }
+]
+```
+
+## Field Details
+
+### Connectedness States
+
+| State | Description |
+|-------|-------------|
+| `Connected` | Active connection established |
+| `NotConnected` | No active connection |
+| `CanConnect` | Known peer, connection possible |
+| `CannotConnect` | Peer unreachable or blocked |
+
+### Connection Direction
+
+- **Outbound**: Your node initiated the connection
+- **Inbound**: The peer connected to your node
+
+A healthy node should have both inbound and outbound connections. If you only have outbound connections, your P2P port may not be properly exposed.
+
+### Subnets
+
+The `subnets` field shows which validator subnets the peer is interested in. Peers with overlapping subnets can communicate about shared validators.
+
+## Use Cases
+
+### Network Health Monitoring
+
+```bash
+# Count connected peers
+curl http://localhost:16000/v1/node/peers | jq 'map(select(.connectedness == "Connected")) | length'
+
+# Check for inbound connections
+curl http://localhost:16000/v1/node/peers | jq '[.[].connections[].direction] | map(select(. == "inbound")) | length'
+```
+
+### Peer Diversity Analysis
+
+```bash
+# List unique peer versions
+curl http://localhost:16000/v1/node/peers | jq '[.[].version] | unique'
+
+# Count peers by subnet
+curl http://localhost:16000/v1/node/peers | jq 'group_by(.subnets) | map({subnet: .[0].subnets, count: length})'
+```
+
+### Connection Troubleshooting
+
+If you're experiencing connectivity issues:
+
+1. Check `connectedness` states - many `NotConnected` may indicate network issues
+2. Verify connection `direction` balance - lack of inbound suggests firewall/NAT problems
+3. Compare `subnets` - ensure overlap with peers managing same validators
+
+## Topics Endpoint
+
+For more detailed P2P topic subscription information, see:
+
+```
+GET /v1/node/topics
+```
+
+This endpoint shows which peers are subscribed to which gossipsub topics, useful for debugging message propagation.
+
+## Source Code Reference
+
+Implementation: `/home/daytona/workspace/source/api/handlers/node/node.go:62`

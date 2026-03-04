@@ -1,0 +1,333 @@
+---
+title: 'Decided Duties'
+api: 'GET/POST /v1/exporter/decideds'
+description: 'Retrieve decided duty participant traces with signer information'
+---
+
+Returns decided duty information for validators, showing which operators successfully signed each duty. This endpoint is available in both basic and full exporter modes.
+
+## Endpoint
+
+```
+GET /v1/exporter/decideds
+POST /v1/exporter/decideds
+```
+
+## Request Parameters
+
+<ParamField query="from" type="integer" required>
+  Starting slot (inclusive)
+  
+  Example: `123456`
+</ParamField>
+
+<ParamField query="to" type="integer" required>
+  Ending slot (inclusive)
+  
+  Example: `123460`
+</ParamField>
+
+<ParamField query="roles" type="array" required>
+  Comma-separated list of beacon roles. Valid values:
+  - `ATTESTER`
+  - `AGGREGATOR`
+  - `PROPOSER`
+  - `SYNC_COMMITTEE`
+  - `SYNC_COMMITTEE_CONTRIBUTION`
+  
+  Example: `roles=ATTESTER,PROPOSER`
+</ParamField>
+
+<ParamField query="pubkeys" type="array">
+  Comma-separated list of validator public keys (hex, 96 characters each)
+  
+  Example: `pubkeys=0x1234...5678`
+</ParamField>
+
+<ParamField query="indices" type="array">
+  Comma-separated list of validator indices
+  
+  Example: `indices=100,200,300`
+</ParamField>
+
+## Response
+
+<ResponseField name="data" type="array" required>
+  Array of decided participant objects
+  
+  <Expandable title="decided participant object">
+    <ResponseField name="role" type="string">
+      Beacon role for this duty (e.g., `"ATTESTER"`)
+    </ResponseField>
+    
+    <ResponseField name="slot" type="integer">
+      Slot number for this duty
+    </ResponseField>
+    
+    <ResponseField name="public_key" type="string">
+      Validator public key (hex-encoded)
+    </ResponseField>
+    
+    <ResponseField name="message" type="object">
+      <Expandable title="properties">
+        <ResponseField name="Signers" type="array">
+          Array of operator IDs that signed this duty
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="errors" type="array">
+  Non-fatal errors encountered (e.g., entries with no signers)
+</ResponseField>
+
+## Example Requests
+
+### GET with Query Parameters
+
+```bash
+curl "http://localhost:16000/v1/exporter/decideds?from=123456&to=123460&roles=ATTESTER&indices=100,200"
+```
+
+### POST with JSON Body
+
+```bash
+curl -X POST http://localhost:16000/v1/exporter/decideds \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": 123456,
+    "to": 123460,
+    "roles": ["ATTESTER", "PROPOSER"],
+    "indices": [100, 200, 300]
+  }'
+```
+
+### Filter by Public Keys
+
+```bash
+curl -X POST http://localhost:16000/v1/exporter/decideds \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": 123456,
+    "to": 123460,
+    "roles": ["ATTESTER"],
+    "pubkeys": ["0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"]
+  }'
+```
+
+## Example Response
+
+```json
+{
+  "data": [
+    {
+      "role": "ATTESTER",
+      "slot": 123456,
+      "public_key": "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+      "message": {
+        "Signers": [1, 2, 3]
+      }
+    },
+    {
+      "role": "ATTESTER",
+      "slot": 123457,
+      "public_key": "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef12345678",
+      "message": {
+        "Signers": [1, 2, 3, 4]
+      }
+    },
+    {
+      "role": "PROPOSER",
+      "slot": 123458,
+      "public_key": "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+      "message": {
+        "Signers": [2, 3, 4]
+      }
+    }
+  ],
+  "errors": [
+    "omitting entry with no signers (index=deadbeef, slot=123459, role=ATTESTER)"
+  ]
+}
+```
+
+## Response Details
+
+### Signer Array
+
+The `Signers` array contains operator IDs that successfully signed the decided message. For a 4-operator cluster with 3f+1 threshold:
+
+- **Healthy**: 3 or 4 signers
+- **Warning**: Exactly 3 signers (minimum threshold)
+- **Failed**: Less than 3 signers (duty failed, no entry returned)
+
+### Error Messages
+
+The `errors` array may contain:
+
+- `"omitting entry with no signers"` - A duty was found but no operators signed
+- `"error getting participants"` - Failed to retrieve participant data
+- `"invalid validator index"` - Requested index doesn't exist
+
+### Public Key Format
+
+The `public_key` field is hex-encoded WITHOUT the `0x` prefix (96 characters).
+
+## Use Cases
+
+### Monitor Operator Participation
+
+```bash
+# Check which operators are signing consistently
+curl "http://localhost:16000/v1/exporter/decideds?from=123400&to=123500&roles=ATTESTER&indices=42" \
+  | jq '.data[].message.Signers' | sort | uniq -c
+```
+
+### Detect Missing Signatures
+
+```bash
+# Find duties with fewer than expected signers
+curl "http://localhost:16000/v1/exporter/decideds?from=123400&to=123500&roles=ATTESTER" \
+  | jq '.data[] | select((.message.Signers | length) < 4)'
+```
+
+### Track Duty Success Rate
+
+```bash
+# Count successful vs failed duties
+RESPONSE=$(curl -s "http://localhost:16000/v1/exporter/decideds?from=123400&to=123500&roles=ATTESTER&indices=42")
+SUCCESS=$(echo $RESPONSE | jq '.data | length')
+ERRORS=$(echo $RESPONSE | jq '.errors | length')
+echo "Success: $SUCCESS, Errors: $ERRORS"
+```
+
+### Analyze by Role
+
+```bash
+# Compare signer participation across roles
+curl "http://localhost:16000/v1/exporter/decideds?from=123400&to=123500&roles=ATTESTER,PROPOSER,AGGREGATOR" \
+  | jq 'group_by(.role) | map({role: .[0].role, count: length})'
+```
+
+## Filtering Behavior
+
+### Slot Range
+
+The `from` and `to` parameters are inclusive:
+
+```json
+{
+  "from": 100,
+  "to": 102
+}
+// Returns duties for slots 100, 101, and 102
+```
+
+### Multiple Validators
+
+When providing multiple indices or pubkeys, results include duties for ANY of them (OR logic):
+
+```json
+{
+  "indices": [100, 200],
+  "roles": ["ATTESTER"]
+}
+// Returns ATTESTER duties for validator 100 OR validator 200
+```
+
+### Pubkeys vs Indices
+
+You can filter by either `pubkeys` or `indices`, or both:
+
+- `pubkeys` only: Returns validators matching those public keys
+- `indices` only: Returns validators matching those indices
+- Both: Returns validators matching EITHER pubkeys OR indices
+
+## Full vs Basic Exporter Mode
+
+This endpoint behaves differently depending on exporter mode:
+
+### Basic Mode (no --exporter flag)
+
+- Returns simple decided participant data
+- No consensus trace information
+- Lower storage overhead
+- Endpoint: Same URL, simpler response
+
+### Full Mode (with --exporter flag)
+
+- Returns enhanced trace data
+- Includes partial error details in `errors` array
+- Higher storage requirements
+- Endpoint: Same URL, more detailed response
+
+<Note>
+The response schema is the same in both modes, but full mode provides richer error reporting.
+</Note>
+
+## Error Handling
+
+### Invalid Public Key Length (400)
+
+```json
+{
+  "status": "Bad Request",
+  "error": "invalid pubkey length: abc123"
+}
+```
+
+Public keys must be exactly 96 hex characters (48 bytes).
+
+### Missing Required Parameters (400)
+
+```json
+{
+  "status": "Bad Request",
+  "error": "missing required field: roles"
+}
+```
+
+### No Data Available (200 with errors)
+
+If no decided data exists for the requested range:
+
+```json
+{
+  "data": [],
+  "errors": ["no decided data found for slot range"]
+}
+```
+
+This is not an error response (200 OK) - check the `errors` array for details.
+
+## Performance Tips
+
+### Limit Slot Ranges
+
+For better performance:
+
+- Query 100 slots or fewer per request
+- Use specific validator filters when possible
+- Consider pagination for large ranges
+
+### Optimize Filters
+
+```bash
+# Good: Specific validators and roles
+curl "...?from=100&to=200&roles=ATTESTER&indices=42,43,44"
+
+# Bad: Wide open query
+curl "...?from=1&to=10000&roles=ATTESTER,PROPOSER,AGGREGATOR,SYNC_COMMITTEE"
+```
+
+## Related Endpoints
+
+- [Validator Traces](/api/exporter/validator) - Detailed consensus traces (requires --exporter)
+- [Committee Traces](/api/exporter/committee) - Committee-level data (requires --exporter)
+
+## Source Code Reference
+
+Implementation: `/home/daytona/workspace/source/api/handlers/exporter/decided_http.go:25`
+
+Model: `/home/daytona/workspace/source/api/handlers/exporter/decided_model.go:18`

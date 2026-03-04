@@ -1,0 +1,376 @@
+---
+title: Validator Management
+description: How to manage validators and validator shares in SSV
+---
+
+This guide covers splitting validator keys into shares and managing validators on the SSV network.
+
+## Overview
+
+SSV uses Shamir Secret Sharing (SSS) to split a validator's BLS private key into multiple shares distributed across SSV operators. This enables distributed validation without any single operator holding the complete key.
+
+## Key Concepts
+
+- **Validator Key**: The original BLS private key for an Ethereum validator
+- **Key Shares**: Split portions of the validator key distributed to operators
+- **Threshold**: The minimum number of operators needed to perform duties (typically 3 of 4)
+- **Cluster**: The group of operators managing a validator
+
+## Prerequisites
+
+- SSV node running and synced (see [Running a Node](/operations/running-a-node))
+- Registered operator on SSV network
+- Validator keystore or mnemonic
+- [ssv-keys](https://github.com/ssvlabs/ssv-keys) tool installed
+
+## Installing ssv-keys
+
+Download the latest release from [ssv-keys releases](https://github.com/ssvlabs/ssv-keys/releases):
+
+```bash
+# Linux
+wget https://github.com/ssvlabs/ssv-keys/releases/download/v1.0.1/ssv-keys-linux-amd64
+chmod +x ssv-keys-linux-amd64
+mv ssv-keys-linux-amd64 /usr/local/bin/ssv-keys
+
+# macOS
+wget https://github.com/ssvlabs/ssv-keys/releases/download/v1.0.1/ssv-keys-mac
+chmod +x ssv-keys-mac
+mv ssv-keys-mac /usr/local/bin/ssv-keys
+```
+
+## Extracting Validator Keys
+
+If you only have a mnemonic, extract the validator keys first.
+
+### From Mnemonic
+
+```bash
+./bin/ssvnode export-keys \
+  --mnemonic="your twelve or twenty four word mnemonic phrase" \
+  --index=0
+```
+
+**Example output:**
+```
+Seed: a1b2c3d4e5f6...
+Generating keys for index: 0
+Private Key: 8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f
+Public Key: a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7
+```
+
+<Warning>
+  Store the extracted private key securely and delete it after generating shares. Never expose your mnemonic or private keys.
+</Warning>
+
+### Supported Networks
+
+Specify the network when extracting keys:
+
+```bash
+./bin/ssvnode export-keys \
+  --mnemonic="your mnemonic" \
+  --index=0 \
+  --network=mainnet  # or holesky, goerli
+```
+
+## Splitting Validator Keys
+
+### Using ssvnode CLI
+
+For testing and development, you can use the built-in threshold command:
+
+```bash
+./bin/ssvnode create-threshold \
+  --private-key=8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f \
+  --count=4
+```
+
+<Note>
+  The `create-threshold` command is for testing only. For production, use the `ssv-keys` tool which generates properly formatted shares for the SSV network.
+</Note>
+
+**Example output:**
+```
+Generating threshold keys for validator a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5...
+
+Public key 0 8a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b
+Private key 0 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b
+
+Public key 1 9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c
+Private key 1 2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c
+
+Public key 2 0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d
+Private key 2 3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d
+
+Public key 3 1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e
+Private key 3 4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e
+```
+
+### Using ssv-keys (Production)
+
+For production validator registration:
+
+<Steps>
+  <Step title="Gather operator information">
+    You'll need:
+    - Operator IDs (e.g., `1,2,3,4`)
+    - Operator public keys (base64-encoded RSA keys)
+    - Owner address (Ethereum address)
+    - Nonce (incremental counter for each validator)
+  </Step>
+
+  <Step title="Split the validator key">
+    ```bash
+    ssv-keys \
+      --keystore=/path/to/keystore.json \
+      --password=keystorePassword \
+      --operator-ids=1,2,3,4 \
+      --operator-keys="LS0tLS1CRUdJTi...,LS0tLS1CRUdJTi...,LS0tLS1CRUdJTi...,LS0tLS1CRUdJTi..." \
+      --owner-address=0x1234567890123456789012345678901234567890 \
+      --owner-nonce=0 \
+      --output-folder=./key_shares
+    ```
+  </Step>
+
+  <Step title="Review generated files">
+    The command creates:
+    - `keyshares-<timestamp>.json`: Contains encrypted shares and registration data
+    - Individual share files for each operator
+  </Step>
+</Steps>
+
+**Example keyshares output structure:**
+```json keyshares.json
+{
+  "version": "v1.0.0",
+  "data": {
+    "publicKey": "0xa0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7",
+    "operators": [
+      {
+        "id": 1,
+        "operatorKey": "LS0tLS1CRUdJTi..."
+      },
+      {
+        "id": 2,
+        "operatorKey": "LS0tLS1CRUdJTi..."
+      },
+      {
+        "id": 3,
+        "operatorKey": "LS0tLS1CRUdJTi..."
+      },
+      {
+        "id": 4,
+        "operatorKey": "LS0tLS1CRUdJTi..."
+      }
+    ]
+  },
+  "payload": {
+    "publicKey": "0xa0b1c2d3...",
+    "operatorIds": [1, 2, 3, 4],
+    "sharesData": "0x8c59e07b..."
+  }
+}
+```
+
+## Registering Validators
+
+After generating key shares:
+
+1. **Register on SSV Network**: Use the SSV web app or contract to register the validator with the generated `sharesData`
+2. **Automatic Sync**: Your SSV node automatically detects the registration via contract events
+3. **Start Duties**: The node begins performing validator duties with its share
+
+### Verifying Registration
+
+Check if your node detected the validator:
+
+```bash
+# Via API
+curl http://localhost:16000/v1/validators
+
+# Via logs
+docker logs ssv-node | grep "ValidatorAdded"
+```
+
+## Managing Validators
+
+### Viewing Active Validators
+
+List validators managed by your operator:
+
+```bash
+curl http://localhost:16000/v1/validators | jq
+```
+
+### Removing Validators
+
+To stop managing a validator:
+
+1. Remove the validator through the SSV web app or contract
+2. Your node automatically processes the `ValidatorRemoved` event
+3. The node stops performing duties for that validator
+
+### Cluster Management
+
+**Cluster Liquidation**: When a cluster runs out of SSV tokens for fees:
+```
+Event: ClusterLiquidated
+OperatorIds: [1, 2, 3, 4]
+Owner: 0x1234...
+```
+
+Liquidated validators stop performing duties. The cluster owner must reactivate:
+
+**Cluster Reactivation**:
+```
+Event: ClusterReactivated  
+OperatorIds: [1, 2, 3, 4]
+Owner: 0x1234...
+```
+
+## Validator Exits
+
+To voluntarily exit a validator from the beacon chain:
+
+1. Initiate exit through SSV web app
+2. SSV operators collaboratively sign the exit message
+3. Exit message is submitted to beacon chain
+
+```
+Event: ValidatorExited
+PublicKey: 0xa0b1c2d3...
+OperatorIds: [1, 2, 3, 4]
+```
+
+<Warning>
+  Validator exits are irreversible. Once exited, the validator cannot be reactivated.
+</Warning>
+
+## Fee Recipient Configuration
+
+Set the address to receive MEV and priority fees:
+
+```
+Event: FeeRecipientAddressUpdated
+Owner: 0x1234...
+RecipientAddress: 0x5678...
+```
+
+This is configured through the SSV contract, not the node directly.
+
+## Monitoring Validator Performance
+
+### Metrics to Track
+
+1. **Attestation Performance**: % of attestations submitted on time
+2. **Proposal Success**: Block proposals completed
+3. **Sync Committee**: Sync committee message success rate
+4. **Penalties**: Missed duties and associated penalties
+
+### Using the Exporter API
+
+Enable the exporter for detailed duty tracking:
+
+```yaml config.yaml
+exporter:
+  Enabled: true
+  Mode: archive  # or standard
+  RetainSlots: 100000  # for standard mode
+```
+
+Query duty history:
+```bash
+curl http://localhost:16000/v1/exporter/duties?validator=0xa0b1c2d3...
+```
+
+## Troubleshooting
+
+### Validator Not Performing Duties
+
+1. **Check registration:**
+   ```bash
+   curl http://localhost:16000/v1/validators
+   ```
+
+2. **Verify cluster is active:**
+   - Check cluster balance in SSV web app
+   - Ensure not liquidated
+
+3. **Check operator status:**
+   ```bash
+   curl http://localhost:16000/v1/node/status
+   ```
+
+4. **Review logs:**
+   ```bash
+   docker logs ssv-node --tail 100 | grep <validator-pubkey>
+   ```
+
+### "Missing keys" Error
+
+If using remote signer (ssv-signer):
+
+```
+remote signer misses keys
+```
+
+**Solution**: Ensure all validator shares are loaded in the remote signer.
+
+### Shares Decryption Failed
+
+```
+could not decrypt operator private key
+```
+
+**Cause**: Validator shares were encrypted with a different operator key.
+
+**Solution**: 
+- Verify you're using the correct operator private key
+- If operator key changed, validators must be re-registered with new shares
+
+## Advanced Configuration
+
+### Doppelganger Protection
+
+Prevent running duplicate validators:
+
+```yaml config.yaml
+EnableDoppelgangerProtection: true
+```
+
+<Note>
+  When enabled, validators wait 2 epochs before starting duties to detect any existing active instances.
+</Note>
+
+### Full Node vs Light Node
+
+By default, nodes run in "light" mode (only managing their own validators). For full network participation:
+
+```yaml config.yaml
+ssv:
+  ValidatorOptions:
+    FullNode: true
+```
+
+Full nodes:
+- Store data for all validators in the network
+- Require significantly more storage
+- Help network decentralization
+
+## Best Practices
+
+1. **Test on testnets first** - Validate your setup on Holesky before mainnet
+2. **Backup key shares** - Store encrypted backups of generated keyshares
+3. **Monitor continuously** - Set up alerts for missed duties
+4. **Keep sufficient cluster balance** - Avoid liquidation by maintaining SSV token balance
+5. **Choose reliable operators** - Select operators with high performance history
+6. **Gradual scaling** - Start with a few validators before scaling up
+7. **Document your setup** - Keep records of operator IDs, nonces, and configurations
+
+## Next Steps
+
+- [Running a Node](/operations/running-a-node)
+- [Operator Keys](/operations/operator-keys)
+- [Local Development](/operations/local-development)
+- [Register Operator](https://docs.ssv.network/operators/registration)

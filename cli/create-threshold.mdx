@@ -1,0 +1,379 @@
+---
+title: 'create-threshold'
+description: 'Split validator keys into threshold shares for testing'
+icon: 'share-nodes'
+---
+
+## Overview
+
+The `create-threshold` command splits an Ethereum validator private key into threshold shares using Shamir Secret Sharing (SSS). These shares can be distributed across multiple SSV operators for distributed validation.
+
+<Warning>
+  This command is **FOR TESTING ONLY**. For production use, always use the [ssv-keys](https://github.com/ssvlabs/ssv-keys) tool which provides additional security features and proper key ceremony workflows.
+</Warning>
+
+## Usage
+
+```bash
+ssvnode create-threshold --private-key=<validator-private-key> --count=<operator-count>
+```
+
+## Flags
+
+<ParamField path="--private-key" type="string" required>
+  Hex-encoded Ethereum validator BLS private key to split into shares.
+  
+  This should be a 64-character hex string (32 bytes) representing your validator's secret key.
+  
+  ```bash
+  ssvnode create-threshold --private-key=0x1234567890abcdef... --count=4
+  ```
+</ParamField>
+
+<ParamField path="--count" type="int" default="4">
+  Number of operator shares to generate.
+  
+  Must be a valid cluster size following the 3f+1 Byzantine fault tolerance model:
+  - `4` operators (tolerates 1 Byzantine fault)
+  - `7` operators (tolerates 2 Byzantine faults)
+  - `10` operators (tolerates 3 Byzantine faults)
+  - `13` operators (tolerates 4 Byzantine faults)
+  
+  ```bash
+  ssvnode create-threshold --private-key=0x1234... --count=7
+  ```
+</ParamField>
+
+## How It Works
+
+### Threshold Cryptography
+
+The command implements Shamir Secret Sharing (SSS) to split a validator key:
+
+1. **Input**: Single validator BLS private key
+2. **Process**: Generate N shares with threshold T (where T = ⌈(N+1)/2⌉)
+3. **Output**: N threshold shares, requiring T shares to reconstruct signatures
+
+### Quorum Requirements
+
+For each cluster size, the quorum (minimum shares needed) is:
+
+| Operators (N) | Quorum (T) | Fault Tolerance (f) |
+|---------------|------------|---------------------|
+| 4 | 3 | 1 |
+| 7 | 5 | 2 |
+| 10 | 7 | 3 |
+| 13 | 9 | 4 |
+
+This follows the Byzantine Fault Tolerance formula: `N = 3f + 1` where `f` is the number of faulty nodes tolerated.
+
+## Examples
+
+### Generate 4-Operator Shares
+
+```bash
+./bin/ssvnode create-threshold \
+  --private-key=0x2e0834786285daccd064ca17f1654f67b4aef298acbb82cef9ec422fb4975622 \
+  --count=4
+```
+
+### Output
+
+```
+Generating threshold keys for validator a9b14f6e...8c7d3f2e
+
+Public key 0 8f65d7e2b9c4a3f1d8e6b2c9f4a7e3d1c8b5a2e9f6d3c0b7a4e1d8c5b2a9f6e3
+Private key 0 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2
+
+Public key 1 7e2b9c4a3f1d8e6b2c9f4a7e3d1c8b5a2e9f6d3c0b7a4e1d8c5b2a9f6e38f65
+Private key 1 2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a21a
+
+Public key 2 9c4a3f1d8e6b2c9f4a7e3d1c8b5a2e9f6d3c0b7a4e1d8c5b2a9f6e38f657e2b
+Private key 2 3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a21a2b
+
+Public key 3 4a3f1d8e6b2c9f4a7e3d1c8b5a2e9f6d3c0b7a4e1d8c5b2a9f6e38f657e2b9c
+Private key 3 4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a21a2b3c
+```
+
+Each operator receives:
+- **Public key** - BLS public key for their share
+- **Private key** - BLS private key share (hex-encoded)
+
+### Generate 7-Operator Shares
+
+For a larger, more fault-tolerant cluster:
+
+```bash
+./bin/ssvnode create-threshold \
+  --private-key=0x2e0834786285daccd064ca17f1654f67b4aef298acbb82cef9ec422fb4975622 \
+  --count=7
+```
+
+This generates 7 shares, requiring 5 signatures (quorum) to perform duties.
+
+## Using Generated Shares
+
+### Local Development Setup
+
+The generated shares can be used for local testing:
+
+```bash
+# 1. Generate shares
+./bin/ssvnode create-threshold \
+  --private-key=0x2e0834... \
+  --count=4
+
+# 2. Create share configuration files (share1.yaml, share2.yaml, etc.)
+# For each operator, use their private key share
+
+# 3. Run local cluster
+docker-compose up --build ssv-node-1 ssv-node-2 ssv-node-3 ssv-node-4
+```
+
+### Share Configuration Example
+
+```yaml share1.yaml
+# Operator 1's share configuration
+OperatorPrivateKey: <operator-1-key>
+
+db:
+  Path: ./data/node1/db
+
+p2p:
+  TcpPort: 13001
+  UdpPort: 12001
+  Discovery: mdns  # For local testing
+
+eth2:
+  BeaconNodeAddr: http://localhost:5052
+
+eth1:
+  ETH1Addr: ws://localhost:8546/ws
+```
+
+<Note>
+  Each operator needs their own share's private key. Never share these keys between operators.
+</Note>
+
+## Production Alternative: ssv-keys
+
+For production environments, use the [ssv-keys](https://github.com/ssvlabs/ssv-keys) tool instead:
+
+```bash
+# Install ssv-keys
+wget https://github.com/ssvlabs/ssv-keys/releases/download/v1.0.1/ssv-keys-lin
+chmod +x ssv-keys-lin
+
+# Generate shares with proper key ceremony
+./ssv-keys-lin --keystore=validator_keystore.json \
+  --password=keystore_password \
+  --operator-keys=operator1.json,operator2.json,operator3.json,operator4.json \
+  --output-folder=./shares
+```
+
+### Why ssv-keys for Production?
+
+<AccordionGroup>
+  <Accordion title="Enhanced Security">
+    - Proper key ceremony workflows
+    - Encrypted share outputs
+    - Support for hardware wallets
+    - Secure key derivation
+  </Accordion>
+
+  <Accordion title="Validator Integration">
+    - Direct keystore.json support
+    - Compatible with all Ethereum clients
+    - Proper BLS signature aggregation
+    - Validator metadata handling
+  </Accordion>
+
+  <Accordion title="Operator Coordination">
+    - Generates payload for contract registration
+    - Creates share files for each operator
+    - Includes operator public keys
+    - Produces ceremony attestations
+  </Accordion>
+
+  <Accordion title="Production Features">
+    - Multi-validator batch processing
+    - Withdrawal credentials verification
+    - Network configuration (mainnet/testnet)
+    - Audit trail and logging
+  </Accordion>
+</AccordionGroup>
+
+## Error Handling
+
+<AccordionGroup>
+  <Accordion title="Invalid private key">
+    ```
+    failed to set hex private key
+    ```
+    
+    **Cause**: Private key is not valid hex or wrong length.
+    
+    **Solution**: Ensure your private key is:
+    - 64 hex characters (32 bytes)
+    - Prefixed with `0x` or not (both accepted)
+    - Valid BLS12-381 scalar
+    
+    ```bash
+    # Valid format
+    --private-key=2e0834786285daccd064ca17f1654f67b4aef298acbb82cef9ec422fb4975622
+    # Or
+    --private-key=0x2e0834786285daccd064ca17f1654f67b4aef298acbb82cef9ec422fb4975622
+    ```
+  </Accordion>
+
+  <Accordion title="Invalid keys count">
+    ```
+    invalid keys count
+    ```
+    
+    **Cause**: The `--count` value is not a valid cluster size.
+    
+    **Solution**: Use valid cluster sizes (3f+1 model):
+    ```bash
+    --count=4   # ✓ Valid
+    --count=7   # ✓ Valid
+    --count=10  # ✓ Valid
+    --count=13  # ✓ Valid
+    --count=5   # ✗ Invalid
+    --count=6   # ✗ Invalid
+    ```
+  </Accordion>
+
+  <Accordion title="Failed to create threshold">
+    ```
+    failed to turn a private key into a threshold key
+    ```
+    
+    **Cause**: Internal error during share generation.
+    
+    **Solution**: Verify your inputs and try again:
+    ```bash
+    # Check private key format
+    echo -n "2e0834786285daccd064ca17f1654f67b4aef298acbb82cef9ec422fb4975622" | wc -c
+    # Should output: 64
+    
+    # Try with explicit count
+    ./bin/ssvnode create-threshold --private-key=0x2e0834... --count=4
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Security Considerations
+
+<Warning>
+  **Critical Security Warnings**
+</Warning>
+
+### Never Use in Production
+
+- This command is designed for **testing and development only**
+- Production validators require proper key ceremonies
+- Use [ssv-keys](https://github.com/ssvlabs/ssv-keys) for mainnet validators
+
+### Protect Private Keys
+
+```bash
+# ❌ BAD - Key visible in command history
+./bin/ssvnode create-threshold --private-key=0x2e0834...
+
+# ✅ BETTER - Use environment variable
+export VALIDATOR_KEY=0x2e0834...
+./bin/ssvnode create-threshold --private-key=$VALIDATOR_KEY
+unset VALIDATOR_KEY
+
+# ✅ BEST - Read from secure file
+./bin/ssvnode create-threshold --private-key=$(cat secure_key.txt)
+```
+
+### Clear Command History
+
+```bash
+# After running create-threshold, clear history
+history -c
+
+# Or use private session
+bash --norc --noprofile
+./bin/ssvnode create-threshold --private-key=...
+exit
+```
+
+### Secure Output
+
+The generated shares are printed to stdout:
+
+```bash
+# Save shares to encrypted files
+./bin/ssvnode create-threshold \
+  --private-key=$KEY \
+  --count=4 > shares.txt
+
+# Encrypt the output
+gpg --encrypt --recipient operator@example.com shares.txt
+
+# Delete plaintext
+shred -u shares.txt
+```
+
+## Testing Workflow
+
+Complete workflow for local development:
+
+### Step 1: Get Validator Key
+
+```bash
+# Option A: Export from mnemonic (testing only)
+./bin/ssvnode export-keys \
+  --mnemonic="your test mnemonic phrase..." \
+  --index=0
+
+# Note the "Private Key" output
+# Private Key: 2e0834786285daccd064ca17f1654f67b4aef298acbb82cef9ec422fb4975622
+```
+
+### Step 2: Create Threshold Shares
+
+```bash
+./bin/ssvnode create-threshold \
+  --private-key=2e0834786285daccd064ca17f1654f67b4aef298acbb82cef9ec422fb4975622 \
+  --count=4 | tee threshold_output.txt
+```
+
+### Step 3: Distribute Shares
+
+```bash
+# Extract each operator's keys from output
+# Create share config files for each operator
+# share1.yaml, share2.yaml, share3.yaml, share4.yaml
+
+# Each config includes:
+# - Operator private key (from generate-operator-keys)
+# - Validator share private key (from create-threshold output)
+```
+
+### Step 4: Run Local Cluster
+
+```bash
+# Start all nodes
+docker-compose up --build ssv-node-1 ssv-node-2 ssv-node-3 ssv-node-4
+
+# Verify cluster is running
+curl http://localhost:15001/metrics  # Node 1
+curl http://localhost:15002/metrics  # Node 2
+```
+
+## Related Commands
+
+- [export-keys](/cli/export-keys) - Extract validator keys from mnemonic
+- [generate-operator-keys](/cli/generate-operator-keys) - Generate operator keys
+- [start-node](/cli/start-node) - Run SSV operator node
+
+## See Also
+
+- [ssv-keys Tool](https://github.com/ssvlabs/ssv-keys) - Production key splitting
+- [Local Development Guide](/operations/local-development) - Running local SSV cluster
+- [Validator Management](/operations/validator-management) - Managing validators

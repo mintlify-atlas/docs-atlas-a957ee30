@@ -1,0 +1,274 @@
+---
+title: 'Exporter API Overview'
+description: 'Access detailed duty execution traces for debugging and monitoring'
+---
+
+The Exporter API provides comprehensive traces of validator duty execution, including consensus rounds, decided messages, and committee activity. This is essential for debugging, performance analysis, and incident investigation.
+
+## Enabling the Exporter
+
+The full exporter API requires enabling the exporter when starting the node:
+
+```bash
+./bin/ssvnode start-node --exporter --config ./config.yaml
+```
+
+<Warning>
+Running with `--exporter` enabled increases storage requirements and CPU usage. Only enable in development environments or when actively debugging.
+</Warning>
+
+## Exporter Modes
+
+SSV Node supports two exporter modes:
+
+### Basic Mode (Default)
+
+Without the `--exporter` flag, only the lightweight decideds endpoint is available:
+
+- `GET/POST /v1/exporter/decideds` - Simple decided duty information
+
+### Full Mode
+
+With the `--exporter` flag, all exporter endpoints are available:
+
+- `GET/POST /v1/exporter/decideds` - Enhanced decided duty traces with errors
+- `GET/POST /v1/exporter/traces/validator` - Detailed validator duty traces
+- `GET/POST /v1/exporter/traces/committee` - Committee-level duty traces
+
+## Available Endpoints
+
+<CardGroup cols={2}>
+  <Card title="Decided Duties" icon="check-circle" href="/api/exporter/decided">
+    Query decided duty participants and signers
+  </Card>
+  
+  <Card title="Validator Traces" icon="magnifying-glass" href="/api/exporter/validator">
+    Deep dive into validator duty execution (requires --exporter)
+  </Card>
+  
+  <Card title="Committee Traces" icon="users" href="/api/exporter/committee">
+    Committee-level consensus and duty traces (requires --exporter)
+  </Card>
+</CardGroup>
+
+## Request Methods
+
+All exporter endpoints support both GET and POST methods:
+
+### GET with Query Parameters
+
+Use for simple queries:
+
+```bash
+curl "http://localhost:16000/v1/exporter/decideds?from=123456&to=123460&roles=ATTESTER"
+```
+
+### POST with JSON Body
+
+Use for complex queries or when parameters are lengthy:
+
+```bash
+curl -X POST http://localhost:16000/v1/exporter/decideds \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": 123456,
+    "to": 123460,
+    "roles": ["ATTESTER", "PROPOSER"],
+    "indices": [100, 200, 300]
+  }'
+```
+
+## Common Parameters
+
+Most exporter endpoints accept these parameters:
+
+<ParamField query="from" type="integer" required>
+  Starting slot (inclusive)
+</ParamField>
+
+<ParamField query="to" type="integer" required>
+  Ending slot (inclusive)
+</ParamField>
+
+<ParamField query="roles" type="array" required>
+  Beacon roles to include. Valid values:
+  - `ATTESTER`
+  - `AGGREGATOR`
+  - `PROPOSER`
+  - `SYNC_COMMITTEE`
+  - `SYNC_COMMITTEE_CONTRIBUTION`
+</ParamField>
+
+<ParamField query="pubkeys" type="array">
+  Validator public keys (hex, 96 characters each)
+</ParamField>
+
+<ParamField query="indices" type="array">
+  Validator indices (integers)
+</ParamField>
+
+## Response Format
+
+All exporter endpoints return:
+
+```json
+{
+  "data": [...],      // Main response data
+  "errors": [...]     // Non-fatal errors (optional)
+}
+```
+
+The `errors` array contains warnings about:
+
+- Missing duty data
+- Validators with no signers
+- Data enrichment failures
+- Partial results
+
+<Info>
+Partial responses are still returned with 200 OK when some data is available. Check the `errors` array for issues.
+</Info>
+
+## Use Cases
+
+### Debugging Failed Duties
+
+```bash
+# Check why attestation failed at slot 123456
+curl -X POST http://localhost:16000/v1/exporter/traces/validator \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": 123456,
+    "to": 123456,
+    "roles": ["ATTESTER"],
+    "indices": [42]
+  }' | jq '.data[0].consensus'
+```
+
+### Performance Analysis
+
+```bash
+# Analyze consensus rounds for slow duties
+curl "http://localhost:16000/v1/exporter/traces/validator?from=123400&to=123500&roles=ATTESTER&indices=42" \
+  | jq '.data[] | {slot, rounds: (.consensus | length)}'
+```
+
+### Signer Participation
+
+```bash
+# Check which operators signed in a slot range
+curl "http://localhost:16000/v1/exporter/decideds?from=123456&to=123460&roles=ATTESTER" \
+  | jq '.data[] | {slot, signers: .message.Signers}'
+```
+
+### Committee Monitoring
+
+```bash
+# Track committee consensus health
+curl -X POST http://localhost:16000/v1/exporter/traces/committee \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": 123456,
+    "to": 123460,
+    "committeeIDs": ["0x1234..."]
+  }' | jq '.data[] | {slot, decideds: (.decideds | length)}'
+```
+
+## Error Handling
+
+### Validation Errors (400)
+
+Returned when request parameters are invalid:
+
+```json
+{
+  "status": "Bad Request",
+  "error": "invalid pubkey length: abc123"
+}
+```
+
+Common validation errors:
+
+- Invalid public key length (must be 96 hex characters)
+- Invalid committee ID length (must be 64 hex characters)
+- Missing required fields
+- Invalid role names
+
+### Rate Limiting (429)
+
+Exporter endpoints are subject to the same rate limiting as other API endpoints:
+
+```
+Max concurrent requests = CPU cores × 4
+```
+
+### Internal Errors (500)
+
+Returned when the server cannot process the request:
+
+```json
+{
+  "status": "Internal Server Error",
+  "error": "failed to retrieve duty traces: database timeout"
+}
+```
+
+## Performance Considerations
+
+### Query Size Limits
+
+To avoid performance issues:
+
+- Limit slot ranges to ~100 slots per request
+- Filter by specific validators when possible
+- Use pagination for large result sets
+
+### Storage Requirements
+
+Full exporter mode stores:
+
+- All QBFT consensus messages
+- Pre/post-consensus partial signatures
+- Decided messages and proposal data
+- Committee metadata
+
+Expect ~10-50 MB per validator per day depending on duty load.
+
+### Resource Impact
+
+- **CPU**: +10-20% for message tracing and storage
+- **Memory**: +500 MB to 2 GB depending on validator count
+- **Disk I/O**: Increased writes during duty execution
+
+## Data Retention
+
+By default, exporter data is retained indefinitely. Configure pruning in your node config:
+
+```yaml
+exporter:
+  retention_days: 7  # Keep last 7 days of traces
+```
+
+<Note>
+Data retention configuration depends on your node version. Check the configuration documentation for your specific version.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="Decided Endpoint" href="/api/exporter/decided">
+    Query decided duties
+  </Card>
+  
+  <Card title="Validator Traces" href="/api/exporter/validator">
+    Detailed duty execution
+  </Card>
+  
+  <Card title="Committee Data" href="/api/exporter/committee">
+    Committee consensus
+  </Card>
+</CardGroup>
+
+## Source Code Reference
+
+Implementation: `/home/daytona/workspace/source/api/handlers/exporter/exporter.go:22`

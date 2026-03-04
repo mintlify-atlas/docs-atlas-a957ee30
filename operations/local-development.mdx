@@ -1,0 +1,645 @@
+---
+title: Local Development
+description: How to set up a local SSV development environment with a 4-node cluster
+---
+
+This guide covers setting up a local SSV development environment for testing and debugging with a 4-node operator cluster.
+
+## Overview
+
+The local development setup simulates a complete SSV network environment:
+- 4 SSV operator nodes running locally
+- Local event simulation (no blockchain required)
+- Automatic validator registration
+- P2P communication via mDNS discovery
+
+This is ideal for:
+- Testing validator operations
+- Debugging consensus issues  
+- Developing SSV integrations
+- Learning SSV architecture
+
+## Prerequisites
+
+Install the following tools:
+
+- **Git** - Version control
+- **Go** (>=1.24) - Build SSV from source
+- **Docker** - Run containerized nodes
+- **Docker Compose** - Orchestrate multiple nodes
+- **Make** - Build automation
+- **yq** - YAML processing
+- **jq** - JSON processing
+
+### Installation on Ubuntu/Debian
+
+```bash
+# Install system dependencies
+sudo apt update
+sudo apt install -y git make jq docker.io docker-compose
+
+# Install Go 1.24+
+wget https://go.dev/dl/go1.24.0.linux-amd64.tar.gz
+sudo tar -C /usr/local -xzf go1.24.0.linux-amd64.tar.gz
+export PATH=$PATH:/usr/local/go/bin
+
+# Install yq
+sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+sudo chmod +x /usr/local/bin/yq
+
+# Add user to docker group
+sudo usermod -aG docker $USER
+newgrp docker
+```
+
+### Installation on macOS
+
+```bash
+# Using Homebrew
+brew install git go make jq yq docker docker-compose
+
+# Start Docker Desktop
+open -a Docker
+```
+
+## Setup Methods
+
+There are two ways to set up the local environment:
+1. **Automated script** (recommended) - Quick setup with validator keystore
+2. **Manual steps** - More control, better for learning
+
+## Method 1: Automated Setup (Recommended)
+
+This method uses a script to automatically generate all configuration files.
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/ssvlabs/ssv.git
+    cd ssv
+    ```
+  </Step>
+
+  <Step title="Build the binary">
+    ```bash
+    make build
+    ```
+
+    This creates `./bin/ssvnode`.
+  </Step>
+
+  <Step title="Download ssv-keys tool">
+    Download version 1.0.1 from the [releases page](https://github.com/ssvlabs/ssv-keys/releases/tag/v1.0.1):
+
+    ```bash
+    # Linux
+    wget https://github.com/ssvlabs/ssv-keys/releases/download/v1.0.1/ssv-keys-linux-amd64
+    chmod +x ssv-keys-linux-amd64
+    mv ssv-keys-linux-amd64 ./bin/ssv-keys
+
+    # macOS
+    wget https://github.com/ssvlabs/ssv-keys/releases/download/v1.0.1/ssv-keys-mac
+    chmod +x ssv-keys-mac  
+    mv ssv-keys-mac ./bin/ssv-keys
+    ```
+  </Step>
+
+  <Step title="Prepare a validator keystore">
+    You need a validator keystore for testing. Create one or use an existing testnet keystore.
+
+    <Warning>
+      Never use production/mainnet keystores in local development!
+    </Warning>
+
+    Example keystore location:
+    ```
+    ./keystore-m_12381_3600_0_0_0-1639058279.json
+    ```
+  </Step>
+
+  <Step title="Run the configuration script">
+    ```bash
+    ./scripts/generate_local_config.sh \
+      4 \
+      ./keystore-m_12381_3600_0_0_0-1639058279.json \
+      keystorePassword123 \
+      0x0000000000000000000000000000000000000000 \
+      0 \
+      ./bin/ssv-keys
+    ```
+
+    **Parameters:**
+    - `4` - Number of operators (must be 3f+1: 4, 7, 10, 13, etc.)
+    - `./keystore...json` - Path to validator keystore
+    - `keystorePassword123` - Keystore password
+    - `0x000...` - Owner address (can be any valid address for testing)
+    - `0` - Nonce (incremental counter, use 0 for first validator)
+    - `./bin/ssv-keys` - Path to ssv-keys executable
+  </Step>
+
+  <Step title="Move generated files">
+    The script creates configuration files. Move them to the config directory:
+
+    ```bash
+    # Files are already in ./config/ after running the script
+    ls ./config/
+    # Output:
+    # share1.yaml  share2.yaml  share3.yaml  share4.yaml  events.yaml
+    ```
+  </Step>
+
+  <Step title="Update config.yaml">
+    Add local events configuration:
+
+    ```bash
+    cat >> ./config/config.yaml << EOF
+
+# Local development settings
+LocalEventsPath: ./config/events.yaml
+
+p2p:
+  Discovery: mdns
+EOF
+    ```
+  </Step>
+
+  <Step title="Start the 4-node cluster">
+    ```bash
+    docker-compose up --build ssv-node-1 ssv-node-2 ssv-node-3 ssv-node-4
+    ```
+
+    Or use the make target:
+    ```bash
+    make docker-all
+    ```
+  </Step>
+</Steps>
+
+## Method 2: Manual Setup
+
+This method gives you complete control over the configuration.
+
+<Steps>
+  <Step title="Clone and build">
+    ```bash
+    git clone https://github.com/ssvlabs/ssv.git
+    cd ssv
+    make build
+    ```
+  </Step>
+
+  <Step title="Generate 4 operator keys">
+    ```bash
+    for i in {1..4}; do
+      ./bin/ssvnode generate-operator-keys > op${i}.log
+    done
+    ```
+
+    Extract the keys:
+    ```bash
+    # Extract public keys
+    for i in {1..4}; do
+      grep "generated public key" op${i}.log | \
+        grep -oP '"pk":"\K[^"]+' > op${i}_public.key
+    done
+
+    # Extract private keys  
+    for i in {1..4}; do
+      grep "generated private key" op${i}.log | \
+        grep -oP '"sk":"\K[^"]+' > op${i}_private.key
+    done
+    ```
+  </Step>
+
+  <Step title="Create share configuration files">
+    Create `config/share1.yaml`:
+    ```yaml
+    db:
+      Path: ./data/db/1
+
+    MetricsAPIPort: 15001
+
+    OperatorPrivateKey: <content-of-op1_private.key>
+    ```
+
+    Repeat for `share2.yaml`, `share3.yaml`, and `share4.yaml`, changing:
+    - Database path: `./data/db/2`, `./data/db/3`, `./data/db/4`
+    - Metrics port: `15002`, `15003`, `15004`  
+    - Private key from respective operator
+  </Step>
+
+  <Step title="Generate validator key shares">
+    Collect operator public keys:
+    ```bash
+    OP1_PUB=$(cat op1_public.key)
+    OP2_PUB=$(cat op2_public.key)
+    OP3_PUB=$(cat op3_public.key)
+    OP4_PUB=$(cat op4_public.key)
+    ```
+
+    Split validator key using [ssv-keys](https://github.com/ssvlabs/ssv-keys):
+    ```bash
+    ssv-keys \
+      --keystore=/path/to/validator/keystore.json \
+      --password=keystorePassword \
+      --operator-ids=1,2,3,4 \
+      --operator-keys="${OP1_PUB},${OP2_PUB},${OP3_PUB},${OP4_PUB}" \
+      --owner-address=0x0000000000000000000000000000000000000000 \
+      --owner-nonce=0 \
+      --output-folder=./key_shares
+    ```
+  </Step>
+
+  <Step title="Create events.yaml">
+    Create `config/events.yaml` based on the template:
+
+    ```yaml config/events.yaml
+    # Operator registration events
+    - Log: ""
+      Name: OperatorAdded
+      Data:
+        ID: 1
+        Owner: 0x0000000000000000000000000000000000000000
+        PublicKey: <op1-public-key-base64>
+    - Log: ""
+      Name: OperatorAdded  
+      Data:
+        ID: 2
+        Owner: 0x0000000000000000000000000000000000000000
+        PublicKey: <op2-public-key-base64>
+    - Log: ""
+      Name: OperatorAdded
+      Data:
+        ID: 3
+        Owner: 0x0000000000000000000000000000000000000000
+        PublicKey: <op3-public-key-base64>
+    - Log: ""
+      Name: OperatorAdded
+      Data:
+        ID: 4
+        Owner: 0x0000000000000000000000000000000000000000
+        PublicKey: <op4-public-key-base64>
+
+    # Validator registration event
+    - Log: ""
+      Name: ValidatorAdded
+      Data:
+        PublicKey: <validator-public-key-from-keyshares>
+        Owner: 0x0000000000000000000000000000000000000000
+        OperatorIds: [1, 2, 3, 4]
+        Shares: <shares-data-from-keyshares>
+    ```
+
+    Populate values from the keyshares JSON generated by ssv-keys.
+  </Step>
+
+  <Step title="Update main config">
+    Edit `config/config.yaml`:
+
+    ```yaml config/config.yaml
+    LocalEventsPath: ./config/events.yaml
+
+    p2p:
+      Discovery: mdns
+    ```
+  </Step>
+
+  <Step title="Start the nodes">
+    ```bash
+    docker-compose up --build ssv-node-1 ssv-node-2 ssv-node-3 ssv-node-4
+    ```
+  </Step>
+</Steps>
+
+## Understanding the Setup
+
+### Docker Compose Configuration
+
+The `docker-compose.yaml` defines 4 node services:
+
+```yaml
+services:
+  ssv-node-1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ssvnode:latest
+    container_name: ssv-node-1
+    environment:
+      CONFIG_PATH: ./config/config.yaml
+      SHARE_CONFIG: ./config/share1.yaml
+    ports:
+      - 16001:16000  # API
+      - 17001:15001  # Metrics
+    volumes:
+      - ./data/ssv-node-1/data:/data
+```
+
+Each node:
+- Uses the same base config (`config.yaml`)
+- Has unique share config (`share1.yaml` - `share4.yaml`)
+- Exposes different ports to avoid conflicts
+- Has separate data directory
+
+### events.yaml Structure
+
+The `events.yaml` file simulates blockchain events without needing an actual Ethereum node:
+
+```yaml
+# Step 1: Register 4 operators
+- Name: OperatorAdded
+  Data:
+    ID: 1
+    PublicKey: <operator-1-pubkey>
+# ... repeat for operators 2, 3, 4
+
+# Step 2: Register validator with 4-operator cluster  
+- Name: ValidatorAdded
+  Data:
+    PublicKey: <validator-pubkey>
+    OperatorIds: [1, 2, 3, 4]
+    Shares: <encrypted-share-data>
+```
+
+This creates a "happy flow" scenario where:
+1. Four operators are registered
+2. One validator is distributed across all four operators
+3. Nodes start performing duties immediately
+
+### P2P Discovery with mDNS
+
+Local nodes discover each other via multicast DNS:
+
+```yaml
+p2p:
+  Discovery: mdns
+```
+
+This enables P2P communication without needing:
+- Public IP addresses
+- Port forwarding
+- Bootstrap nodes
+- External discovery mechanisms
+
+<Note>
+  mDNS only works for nodes on the same local network. For production, use discv5 discovery.
+</Note>
+
+## Accessing the Nodes
+
+### Node Endpoints
+
+| Node | API Port | Metrics Port |
+|------|----------|-------------|
+| ssv-node-1 | 16001 | 17001 |
+| ssv-node-2 | 16002 | 17002 |
+| ssv-node-3 | 16003 | 17003 |
+| ssv-node-4 | 16004 | 17004 |
+
+### API Examples
+
+Check node status:
+```bash
+curl http://localhost:16001/v1/node/status | jq
+```
+
+List validators:
+```bash
+curl http://localhost:16001/v1/validators | jq
+```
+
+Get metrics:
+```bash
+curl http://localhost:17001/metrics
+```
+
+### Viewing Logs
+
+**All nodes:**
+```bash
+docker-compose logs -f
+```
+
+**Specific node:**
+```bash
+docker logs ssv-node-1 -f
+```
+
+**Filter by validator:**
+```bash
+docker logs ssv-node-1 | grep "pubKey=<validator-pubkey>"
+```
+
+## Debugging
+
+### Running Nodes in Debug Mode
+
+For debugging with delve:
+
+```bash
+make docker-debug
+```
+
+This starts debug-enabled containers:
+- `ssv-node-1-dev` on debug port 40005
+- `ssv-node-2-dev` on debug port 40006  
+- `ssv-node-3-dev` on debug port 40007
+- `ssv-node-4-dev` on debug port 40008
+
+Connect your debugger to `localhost:40005` (or other ports).
+
+### Common Debugging Scenarios
+
+**Test consensus behavior:**
+```bash
+# Stop one node to test 3-of-4 threshold
+docker-compose stop ssv-node-4
+
+# Watch remaining nodes handle duties
+docker logs ssv-node-1 -f | grep "consensus"
+```
+
+**Test network partition:**
+```bash
+# Disconnect a node from network
+docker network disconnect blox-docker ssv-node-3
+
+# Observe behavior
+docker logs ssv-node-3 -f
+
+# Reconnect
+docker network connect blox-docker ssv-node-3
+```
+
+**Simulate operator failure:**
+```bash
+# Kill node abruptly
+docker kill ssv-node-2
+
+# Restart after delay
+sleep 30
+docker-compose up -d ssv-node-2
+```
+
+## Testing Multiple Validators
+
+To test with multiple validators:
+
+<Steps>
+  <Step title="Generate additional keyshares">
+    ```bash
+    # For second validator (increment nonce)
+    ssv-keys \
+      --keystore=/path/to/validator2/keystore.json \
+      --password=password \
+      --operator-ids=1,2,3,4 \
+      --operator-keys="${OP1_PUB},${OP2_PUB},${OP3_PUB},${OP4_PUB}" \
+      --owner-address=0x0000000000000000000000000000000000000000 \
+      --owner-nonce=1 \
+      --output-folder=./key_shares_2
+    ```
+  </Step>
+
+  <Step title="Add to events.yaml">
+    Append another `ValidatorAdded` event:
+    ```yaml
+    - Log: ""
+      Name: ValidatorAdded
+      Data:
+        PublicKey: <validator-2-pubkey>
+        Owner: 0x0000000000000000000000000000000000000000
+        OperatorIds: [1, 2, 3, 4]
+        Shares: <validator-2-shares>
+    ```
+  </Step>
+
+  <Step title="Restart nodes">
+    ```bash
+    docker-compose restart
+    ```
+  </Step>
+</Steps>
+
+## Cleaning Up
+
+### Stop All Nodes
+
+```bash
+docker-compose down
+```
+
+### Reset Environment
+
+```bash
+# Stop and remove containers
+docker-compose down
+
+# Remove data directories
+rm -rf ./data/ssv-node-*/
+
+# Remove generated configs
+rm ./config/share*.yaml ./config/events.yaml
+
+# Remove operator key logs
+rm op*.log op*.key
+```
+
+### Partial Reset (Keep Keys)
+
+To reset only the database:
+
+```bash
+docker-compose down
+rm -rf ./data/ssv-node-*/data
+docker-compose up -d
+```
+
+## Performance Testing
+
+### Load Testing
+
+Simulate high validator load:
+
+```bash
+# Generate events for 100 validators
+for i in {1..100}; do
+  # Generate keyshares with nonce=$i
+  # Append to events.yaml
+done
+```
+
+### Benchmarking
+
+```bash
+# Run benchmarks
+make benchmark TARGET_DIR_PATH=./protocol/v2/ssv
+```
+
+## Troubleshooting
+
+### Nodes Not Discovering Each Other
+
+**Symptom:** Nodes show 0 peers
+
+**Solution:**
+```bash
+# Verify network
+docker network inspect blox-docker
+
+# Ensure mDNS is enabled
+grep "Discovery: mdns" config/config.yaml
+
+# Restart nodes
+docker-compose restart
+```
+
+### "Events file not found"
+
+**Symptom:** 
+```
+failed to load local events: open ./config/events.yaml: no such file
+```
+
+**Solution:**
+```bash
+# Verify file exists
+ls -la ./config/events.yaml
+
+# Check mount in docker-compose
+docker-compose config | grep -A5 volumes
+```
+
+### Port Conflicts
+
+**Symptom:**
+```
+Error: bind: address already in use
+```
+
+**Solution:**
+```bash
+# Find conflicting process
+sudo lsof -i :16001
+
+# Kill or change port in docker-compose.yaml
+```
+
+### Database Corruption
+
+```bash
+# Stop nodes
+docker-compose down
+
+# Remove corrupted DB
+rm -rf ./data/ssv-node-1/data/db
+
+# Restart
+docker-compose up -d ssv-node-1
+```
+
+## Next Steps
+
+- [Running a Production Node](/operations/running-a-node)
+- [Operator Keys Management](/operations/operator-keys)
+- [Validator Management](/operations/validator-management)
+- [Contributing to SSV](https://github.com/ssvlabs/ssv/blob/main/CONTRIBUTING.md)

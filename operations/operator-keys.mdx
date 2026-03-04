@@ -1,0 +1,317 @@
+---
+title: Operator Keys
+description: How to generate and manage operator keys for SSV nodes
+---
+
+Operator keys are cryptographic keys used to identify your SSV operator node and decrypt validator share data. This guide covers generating and managing these keys securely.
+
+## Overview
+
+Each SSV operator needs an RSA key pair:
+- **Private Key**: Used to decrypt validator shares assigned to your operator
+- **Public Key**: Your operator's public identity on the SSV network
+
+<Warning>
+  Keep your operator private key secure! Loss of this key means you cannot decrypt validator shares and will need to regenerate it, requiring re-registration of all validators.
+</Warning>
+
+## Generating Operator Keys
+
+The SSV node binary provides the `generate-operator-keys` command to create operator keys in three formats.
+
+### Option 1: Raw Format (Development Only)
+
+<Warning>
+  Raw format is NOT recommended for production use as it exposes sensitive data. Use encrypted format for production.
+</Warning>
+
+Generate a raw operator key:
+
+```bash
+./bin/ssvnode generate-operator-keys
+```
+
+**Example output:**
+```json
+{
+  "level": "info",
+  "time": "2024-01-15T10:30:45Z",
+  "caller": "cli/generate_operator_keys.go:70",
+  "message": "generated public key (base64)",
+  "pk": "LS0tLS1CRUdJTiBSU0EgUFVCTElDIEtFWS0tLS0tCk1JSUJJakFOQmdrcW..."
+}
+{
+  "level": "info",
+  "time": "2024-01-15T10:30:45Z",
+  "caller": "cli/generate_operator_keys.go:71",
+  "message": "generated private key (base64)",
+  "sk": "LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFb3dJQkFBS0NBUUVB..."
+}
+```
+
+The private key (`sk`) can be used directly in `config.yaml`:
+
+```yaml config.yaml
+OperatorPrivateKey: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFb3dJQkFBS0NBUUVB...
+```
+
+### Option 2: Encrypted Keystore (Recommended)
+
+For production environments, generate an encrypted keystore:
+
+<Steps>
+  <Step title="Create a password file">
+    ```bash
+    echo "your-strong-password" > password.txt
+    chmod 600 password.txt
+    ```
+  </Step>
+
+  <Step title="Generate encrypted keystore">
+    ```bash
+    ./bin/ssvnode generate-operator-keys --password-file=password.txt
+    ```
+
+    This creates `encrypted_private_key.json` in the current directory.
+  </Step>
+
+  <Step title="Secure the keystore files">
+    ```bash
+    chmod 600 encrypted_private_key.json
+    chmod 600 password.txt
+    
+    # Move to secure location
+    mkdir -p /secure/keystore
+    mv encrypted_private_key.json /secure/keystore/
+    mv password.txt /secure/keystore/
+    ```
+  </Step>
+
+  <Step title="Configure the node">
+    Update `config.yaml`:
+    ```yaml config.yaml
+    KeyStore:
+      PrivateKeyFile: /secure/keystore/encrypted_private_key.json
+      PasswordFile: /secure/keystore/password.txt
+    ```
+  </Step>
+</Steps>
+
+**Example keystore JSON structure:**
+```json encrypted_private_key.json
+{
+  "version": 4,
+  "id": "...",
+  "pubkey": "LS0tLS1CRUdJTiBSU0EgUFVCTElDIEtFWS0tLS0t...",
+  "crypto": {
+    "cipher": "aes-128-ctr",
+    "ciphertext": "...",
+    "cipherparams": {
+      "iv": "..."
+    },
+    "kdf": "scrypt",
+    "kdfparams": {
+      "n": 262144,
+      "r": 8,
+      "p": 1,
+      "dklen": 32,
+      "salt": "..."
+    },
+    "mac": "..."
+  }
+}
+```
+
+### Option 3: Convert Existing Key to Keystore
+
+If you already have a raw operator key and want to encrypt it:
+
+```bash
+# Save your existing private key to a file
+echo "LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQ..." > operator_key.txt
+
+# Create password file
+echo "your-strong-password" > password.txt
+
+# Convert to encrypted keystore
+./bin/ssvnode generate-operator-keys \
+  --password-file=password.txt \
+  --operator-key-file=operator_key.txt
+```
+
+This generates `encrypted_private_key.json` from your existing key.
+
+<Note>
+  After converting to keystore, securely delete the plain-text key file:
+  ```bash
+  shred -u operator_key.txt
+  ```
+</Note>
+
+## Using Operator Keys
+
+### Configuration Methods
+
+You can configure operator keys in two ways:
+
+**Method 1: Base64-encoded private key (not recommended for production)**
+```yaml config.yaml
+OperatorPrivateKey: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFb3dJQkFBS0NBUUVB...
+```
+
+**Method 2: Encrypted keystore (recommended)**
+```yaml config.yaml
+KeyStore:
+  PrivateKeyFile: /path/to/encrypted_private_key.json
+  PasswordFile: /path/to/password.txt
+```
+
+<Warning>
+  Cannot use both methods simultaneously. Choose one approach and ensure the other is not configured.
+</Warning>
+
+### Extracting Public Key
+
+To get your operator's public key from a keystore:
+
+```bash
+jq -r '.pubkey' /secure/keystore/encrypted_private_key.json
+```
+
+For raw format, the public key was displayed during generation. You'll need this when registering your operator on the SSV network.
+
+## Key Management Best Practices
+
+### Security
+
+1. **Never share your private key** - Only the public key should be shared
+2. **Use strong passwords** - For encrypted keystores, use passwords with:
+   - At least 16 characters
+   - Mix of uppercase, lowercase, numbers, and symbols
+   - Not used anywhere else
+3. **Restrict file permissions:**
+   ```bash
+   chmod 600 encrypted_private_key.json
+   chmod 600 password.txt
+   chown ssvnode:ssvnode *.json *.txt
+   ```
+4. **Store backups securely** - Keep encrypted backups in multiple secure locations
+5. **Use hardware security modules (HSM)** - For enterprise deployments, consider HSM integration
+
+### Backup Strategy
+
+<Steps>
+  <Step title="Create encrypted backup">
+    ```bash
+    # Backup keystore and password
+    tar czf operator-keys-backup.tar.gz \
+      encrypted_private_key.json \
+      password.txt
+    
+    # Encrypt the backup
+    gpg --symmetric --cipher-algo AES256 operator-keys-backup.tar.gz
+    ```
+  </Step>
+
+  <Step title="Store in multiple locations">
+    - Secure cloud storage (encrypted)
+    - Hardware encrypted USB drive
+    - Password manager's secure notes
+    - Physical safe (for critical production keys)
+  </Step>
+
+  <Step title="Document recovery process">
+    Create a recovery document including:
+    - Location of backups
+    - Decryption procedures
+    - Contact information for key stakeholders
+  </Step>
+</Steps>
+
+### Key Rotation
+
+<Warning>
+  Rotating operator keys requires re-registering all validators with new shares. Plan this carefully during low-activity periods.
+</Warning>
+
+To rotate operator keys:
+
+1. Generate new operator keys
+2. Update operator registration on SSV contract with new public key
+3. Re-split all validator keys with new operator public key
+4. Update validators on SSV network
+5. Update node configuration with new private key
+6. Restart node
+
+## Legacy Public Key Format
+
+Older versions of SSV used a different keystore format. If migrating:
+
+```bash
+./bin/ssvnode generate-operator-keys \
+  --password-file=password.txt \
+  --legacy-pubkey
+```
+
+This generates a keystore with `pubKey` instead of `pubkey` field for backward compatibility.
+
+## Troubleshooting
+
+### "Could not decrypt operator private key keystore"
+
+**Cause:** Incorrect password or corrupted keystore file.
+
+**Solution:**
+1. Verify password file contains correct password
+2. Check file permissions (should be readable by node process)
+3. Restore from backup if corrupted
+
+### "Cannot enable both OperatorPrivateKey and PrivateKeyFile"
+
+**Cause:** Both raw key and keystore configured simultaneously.
+
+**Solution:** Remove one configuration method from `config.yaml`:
+```yaml
+# Remove this if using KeyStore
+# OperatorPrivateKey: ...
+
+# Or remove this if using OperatorPrivateKey
+# KeyStore:
+#   PrivateKeyFile: ...
+#   PasswordFile: ...
+```
+
+### "Operator private key is not matching the one encrypted the storage"
+
+**Cause:** Attempting to use a different private key than originally configured.
+
+**Solution:** SSV nodes store a hash of the operator private key to prevent accidental key changes. To use a different key:
+1. Clear the database: `rm -rf ./data/db`
+2. Use the new key (will resync all data)
+
+<Warning>
+  Clearing the database and changing keys will require re-registering all validators.
+</Warning>
+
+## Using with Remote Signer (SSV Signer)
+
+For enhanced security, you can use a remote signing service:
+
+```yaml config.yaml
+SSVSigner:
+  Endpoint: https://ssv-signer.example.com
+  RequestTimeout: 10s
+  KeystoreFile: /path/to/client-keystore.json
+  KeystorePasswordFile: /path/to/client-password.txt
+  ServerCertFile: /path/to/server-cert.pem
+```
+
+<Note>
+  When using SSVSigner, do not configure `OperatorPrivateKey` or `KeyStore` in the node config.
+</Note>
+
+## Next Steps
+
+- [Run an SSV Node](/operations/running-a-node)
+- [Manage Validators](/operations/validator-management)
+- [Register Your Operator](https://docs.ssv.network/operators/registration)

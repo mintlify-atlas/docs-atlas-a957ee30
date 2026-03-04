@@ -1,122 +1,135 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "SSV Node",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#2cb4fc",
+    "light": "#0c0c54",
+    "dark": "#2cb4fc"
   },
-  "favicon": "/favicon.svg",
+
+  "logo": {
+    "light": "https://media.brand.dev/b17b50fc-ffab-4ebe-a1bc-b77edb72bcc4.png",
+    "dark": "https://media.brand.dev/b17b50fc-ffab-4ebe-a1bc-b77edb72bcc4.png"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/ssvlabs/ssv"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/ssvlabs/ssv",
+      "discord": "https://discord.gg/5vT22pRBrf"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Overview",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
+              "introduction",
+              "architecture"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Getting Started",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "getting-started/installation",
+              "getting-started/quick-start",
+              "getting-started/configuration"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Node Operations",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "operations/running-a-node",
+              "operations/operator-keys",
+              "operations/validator-management",
+              "operations/local-development"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Core Concepts",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "concepts/secret-sharing",
+              "concepts/consensus",
+              "concepts/network-topology",
+              "concepts/duties"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/docker",
+              "deployment/production",
+              "deployment/security"
+            ]
+          },
+          {
+            "group": "Monitoring",
+            "pages": [
+              "monitoring/metrics",
+              "monitoring/logging",
+              "monitoring/troubleshooting"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Overview",
             "pages": [
-              "api-reference/introduction"
+              "api/introduction"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Node API",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/node/health",
+              "api/node/identity",
+              "api/node/peers"
+            ]
+          },
+          {
+            "group": "Validator API",
+            "pages": [
+              "api/validators/list",
+              "api/validators/status"
+            ]
+          },
+          {
+            "group": "Exporter API",
+            "pages": [
+              "api/exporter/overview",
+              "api/exporter/decided",
+              "api/exporter/validator",
+              "api/exporter/committee"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "CLI Reference",
+        "groups": [
+          {
+            "group": "Commands",
+            "pages": [
+              "cli/overview",
+              "cli/start-node",
+              "cli/generate-operator-keys",
+              "cli/create-threshold",
+              "cli/export-keys"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

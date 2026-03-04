@@ -1,0 +1,371 @@
+---
+title: Prometheus Metrics
+description: Monitor your SSV node with Prometheus metrics and Grafana dashboards
+---
+
+SSV Node exposes comprehensive Prometheus metrics for monitoring node health, validator performance, and network activity. This page documents the available metrics, endpoints, and recommended monitoring setup.
+
+## Metrics Endpoint
+
+The metrics server runs on a separate port from the main node API and exposes the following endpoints:
+
+### `/metrics`
+
+Prometheus-formatted metrics endpoint with OpenMetrics support.
+
+```bash
+curl http://localhost:15000/metrics
+```
+
+<Note>
+The default metrics port is `15000`. Configure this in your `config.yaml` with the `MetricsAPIPort` setting.
+</Note>
+
+### `/health`
+
+Health check endpoint that validates node operational status.
+
+```bash
+curl http://localhost:15000/health
+```
+
+Returns:
+- **200 OK**: Node is healthy
+- **500 Internal Server Error**: Node health check failed with error details in JSON format
+
+### `/debug/pprof/*`
+
+Go profiling endpoints (enabled with `EnableProfile: true`).
+
+<Tip>
+Enable profiling only when debugging performance issues, as it adds overhead to the node.
+</Tip>
+
+Available endpoints:
+- `/debug/pprof/` - Index of available profiles
+- `/debug/pprof/heap` - Memory allocation profiling
+- `/debug/pprof/goroutine` - Goroutine stack traces
+- `/debug/pprof/threadcreate` - Thread creation profiling
+- `/debug/pprof/block` - Blocking profiling
+- `/debug/pprof/mutex` - Mutex contention profiling
+- `/debug/pprof/profile` - CPU profiling (30s default)
+
+### `/database/count-by-collection`
+
+Query database key counts by collection prefix.
+
+```bash
+# Total keys in database
+curl http://localhost:15000/database/count-by-collection
+
+# Keys with specific prefix (string)
+curl http://localhost:15000/database/count-by-collection?prefix=shares
+
+# Keys with hex prefix
+curl "http://localhost:15000/database/count-by-collection?prefix=0x736861726573"
+```
+
+Returns:
+```json
+{"count": 42}
+```
+
+## Key Metrics Categories
+
+### Validator Metrics
+
+Metrics tracking validator status and lifecycle (source: `operator/validator/observability.go:39`).
+
+#### `ssv.validator.validators.per_status`
+- **Type**: Gauge
+- **Description**: Total number of validators by status
+- **Labels**: `ssv.validator.status`
+- **Status values**:
+  - `active` - Validator is active on beacon chain
+  - `attesting` - Validator is performing attestation duties
+  - `participating` - Validator is participating in SSV cluster
+  - `pending` - Validator activation pending
+  - `exiting` - Validator is exiting
+  - `slashed` - Validator has been slashed
+  - `not_activated` - Validator not yet activated
+  - `no_index` - Validator index not found
+  - `not_found` - Validator not found on beacon chain
+  - `unknown` - Status could not be determined
+
+#### `ssv.validator.validators.removed`
+- **Type**: Counter
+- **Unit**: `{validator}`
+- **Description**: Total number of validators removed from the node
+
+#### `ssv.validator.errors`
+- **Type**: Counter
+- **Unit**: `{validator}`
+- **Description**: Total number of validator-related errors
+
+### Runner Metrics
+
+Metrics for duty execution performance (source: `protocol/v2/ssv/runner/observability.go:83`).
+
+#### `ssv.runner.consensus.duration`
+- **Type**: Histogram
+- **Unit**: seconds
+- **Buckets**: `[0, 0.001, 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.25, 0.5, 0.75, 1, 2.5, 5, 7.5, 10]`
+- **Description**: Time spent in consensus phase
+- **Labels**: `ssv.runner.role` (attester, proposer, aggregator, sync_committee, sync_committee_contribution)
+
+#### `ssv.runner.pre_consensus.duration`
+- **Type**: Histogram
+- **Unit**: seconds
+- **Description**: Time spent in pre-consensus phase (signature collection)
+- **Labels**: `ssv.runner.role`
+
+#### `ssv.runner.post_consensus.duration`
+- **Type**: Histogram
+- **Unit**: seconds
+- **Description**: Time spent in post-consensus phase (reconstruction and submission)
+- **Labels**: `ssv.runner.role`
+
+#### `ssv.runner.duty.duration`
+- **Type**: Histogram
+- **Unit**: seconds
+- **Description**: Total duty execution time from start to completion
+- **Labels**: `ssv.runner.role`, `ssv.duty.round`
+
+#### `ssv.runner.submissions`
+- **Type**: Gauge
+- **Unit**: `{submission}`
+- **Description**: Number of duty submissions per epoch by role
+- **Labels**: `ssv.beacon.role`
+
+#### `ssv.runner.submissions.failed`
+- **Type**: Counter
+- **Unit**: `{submission}`
+- **Description**: Total number of failed duty submissions
+- **Labels**: `ssv.beacon.role`
+
+### QBFT Instance Metrics
+
+Metrics for consensus instance performance (source: `protocol/v2/qbft/instance/observability.go:41`).
+
+#### `ssv.qbft.validator_stage.duration`
+- **Type**: Histogram
+- **Unit**: seconds
+- **Description**: Time validators spend in different consensus stages
+- **Buckets**: Same as runner duration metrics
+
+#### `ssv.qbft.rounds.changed`
+- **Type**: Counter
+- **Description**: Number of consensus round changes (indicates slower consensus)
+
+### Duty Scheduling Metrics
+
+Metrics for duty scheduling and slot timing (source: `operator/duties/observability.go:24`).
+
+#### `ssv.scheduler.slot_delay`
+- **Type**: Histogram
+- **Unit**: seconds
+- **Description**: Delay between slot start time and duty processing
+- **Buckets**: Same as runner duration metrics
+
+#### `ssv.scheduler.duties.scheduled`
+- **Type**: Counter
+- **Description**: Total number of duties scheduled
+- **Labels**: `ssv.runner.role`
+
+### Queue Metrics
+
+Metrics for duty queue sizes (source: `protocol/v2/ssv/queue/observability.go:28`).
+
+#### `ssv.queue.inbox.size`
+- **Type**: Gauge
+- **Description**: Current size of duty queue inbox
+- **Labels**: `queue_type`, `queue_id`
+
+### Duty Tracer Metrics
+
+Metrics for duty tracing and message tracking (source: `operator/dutytracer/observability.go:20`).
+
+#### `ssv.tracer.in_flight_messages`
+- **Type**: Counter
+- **Description**: Number of messages being tracked in the duty tracer
+
+#### `ssv.tracer.processing.duration`
+- **Type**: Histogram
+- **Unit**: seconds
+- **Description**: Time spent processing traced messages
+
+#### `ssv.tracer.db.duration`
+- **Type**: Histogram
+- **Unit**: seconds
+- **Description**: Database operation duration for duty tracer storage
+
+## Grafana Dashboard Setup
+
+SSV Node includes Grafana dashboards for comprehensive monitoring.
+
+### Available Dashboards
+
+According to the roadmap (source: `ROADMAP.md:118`), SSV provides:
+
+- **V2 Grafana Dashboards** for node health and performance monitoring
+- **Prometheus and Grafana support** for production deployments
+
+<Tip>
+Grafana dashboards are typically included in the SSV deployment repositories. Check the [ssv-labs/ssv](https://github.com/ssvlabs/ssv) repository for the latest dashboard JSON files.
+</Tip>
+
+### Prometheus Configuration
+
+Add SSV Node as a scrape target in your `prometheus.yml`:
+
+```yaml prometheus.yml
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'ssv-node'
+    static_configs:
+      - targets: ['localhost:15000']
+        labels:
+          instance: 'ssv-node-1'
+          environment: 'production'
+```
+
+### Key Queries for Alerts
+
+#### Validator Status Monitoring
+
+```promql
+# Active validators
+ssv_validator_validators_per_status{ssv_validator_status="active"}
+
+# Slashed validators (should always be 0)
+ssv_validator_validators_per_status{ssv_validator_status="slashed"} > 0
+
+# Validators without index
+ssv_validator_validators_per_status{ssv_validator_status="no_index"} > 0
+```
+
+#### Performance Monitoring
+
+```promql
+# 95th percentile consensus duration
+histogram_quantile(0.95, 
+  rate(ssv_runner_consensus_duration_bucket[5m])
+)
+
+# Failed submissions rate
+rate(ssv_runner_submissions_failed[5m])
+
+# Round changes (should be minimal)
+rate(ssv_qbft_rounds_changed[5m])
+```
+
+#### Duty Execution Monitoring
+
+```promql
+# Duty scheduling delay
+histogram_quantile(0.95, 
+  rate(ssv_scheduler_slot_delay_bucket[5m])
+)
+
+# Total duties scheduled by role
+sum by (ssv_runner_role) (rate(ssv_scheduler_duties_scheduled[5m]))
+
+# Submission success rate
+rate(ssv_runner_submissions[5m]) / 
+  (rate(ssv_runner_submissions[5m]) + rate(ssv_runner_submissions_failed[5m]))
+```
+
+## Monitoring Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Set Up Alerts" icon="bell">
+    Configure Prometheus alerts for:
+    - Failed submissions
+    - Validator status changes
+    - High consensus durations
+    - Round changes
+  </Card>
+  
+  <Card title="Track Trends" icon="chart-line">
+    Monitor historical trends:
+    - Submission success rates
+    - Consensus performance over time
+    - Queue sizes and backlogs
+  </Card>
+  
+  <Card title="Correlate Events" icon="diagram-project">
+    Cross-reference metrics with:
+    - Beacon chain events
+    - Network connectivity
+    - System resource usage
+  </Card>
+  
+  <Card title="Regular Review" icon="clock">
+    Periodically review:
+    - Dashboard accuracy
+    - Alert thresholds
+    - Metric retention policies
+  </Card>
+</CardGroup>
+
+### Recommended Alert Rules
+
+```yaml alerting_rules.yml
+groups:
+  - name: ssv_node_alerts
+    interval: 30s
+    rules:
+      - alert: SSVNodeValidatorSlashed
+        expr: ssv_validator_validators_per_status{ssv_validator_status="slashed"} > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SSV validator has been slashed"
+          description: "{{ $value }} validator(s) have been slashed"
+
+      - alert: SSVNodeHighFailedSubmissions
+        expr: rate(ssv_runner_submissions_failed[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High rate of failed duty submissions"
+          description: "Failed submission rate: {{ $value | humanize }} per second"
+
+      - alert: SSVNodeSlowConsensus
+        expr: |
+          histogram_quantile(0.95, 
+            rate(ssv_runner_consensus_duration_bucket[5m])
+          ) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Consensus is taking longer than expected"
+          description: "95th percentile consensus duration: {{ $value }}s"
+
+      - alert: SSVNodeHealthCheckFailing
+        expr: up{job="ssv-node"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SSV node is down or unreachable"
+          description: "Node {{ $labels.instance }} has been down for 2 minutes"
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Logging Configuration" icon="file-lines" href="/monitoring/logging">
+    Configure structured logging and log analysis
+  </Card>
+  
+  <Card title="Troubleshooting Guide" icon="wrench" href="/monitoring/troubleshooting">
+    Common issues and debugging techniques
+  </Card>
+</CardGroup>

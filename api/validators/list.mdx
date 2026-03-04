@@ -1,0 +1,253 @@
+---
+title: 'List Validators'
+api: 'GET /v1/validators'
+description: 'Retrieve validators managed by the SSV node with flexible filtering'
+---
+
+Returns a list of validators (shares) managed by the node, with support for filtering by owner, operator, cluster, public key, or validator index.
+
+## Endpoint
+
+```
+GET /v1/validators
+```
+
+## Query Parameters
+
+<ParamField query="owners" type="string">
+  Comma-separated list of owner addresses (hex, with or without 0x prefix)
+  
+  Example: `owners=0x1234...5678,0xabcd...ef01`
+</ParamField>
+
+<ParamField query="operators" type="string">
+  Comma-separated list of operator IDs (integers)
+  
+  Example: `operators=1,2,3`
+</ParamField>
+
+<ParamField query="clusters" type="string">
+  Space-separated list of operator clusters. Each cluster is a comma-separated list of operator IDs. Only exact matches are returned.
+  
+  Example: `clusters=1,2,3,4 5,6,7,8`
+</ParamField>
+
+<ParamField query="subclusters" type="string">
+  Space-separated list of operator subclusters. Returns validators whose committee contains the specified operators (partial match).
+  
+  Example: `subclusters=1,2 3,4`
+</ParamField>
+
+<ParamField query="pubkeys" type="string">
+  Comma-separated list of validator public keys (hex, 96 characters each)
+  
+  Example: `pubkeys=0x1234...5678,0xabcd...ef01`
+</ParamField>
+
+<ParamField query="indices" type="string">
+  Comma-separated list of validator indices (integers)
+  
+  Example: `indices=100,200,300`
+</ParamField>
+
+## Response
+
+<ResponseField name="data" type="array" required>
+  Array of validator objects
+  
+  <Expandable title="validator object">
+    <ResponseField name="public_key" type="string">
+      Validator's BLS public key (hex-encoded, 96 characters)
+    </ResponseField>
+    
+    <ResponseField name="index" type="integer">
+      Validator index on the beacon chain (0 if not yet activated)
+    </ResponseField>
+    
+    <ResponseField name="status" type="string">
+      Validator status: `"pending_initialized"`, `"pending_queued"`, `"active_ongoing"`, `"active_exiting"`, `"active_slashed"`, `"exited_unslashed"`, `"exited_slashed"`, `"withdrawal_possible"`, `"withdrawal_done"`, or empty if no beacon metadata
+    </ResponseField>
+    
+    <ResponseField name="activation_epoch" type="integer">
+      Epoch when validator activates (0 if not yet activated)
+    </ResponseField>
+    
+    <ResponseField name="exit_epoch" type="integer">
+      Epoch when validator exits (FAR_FUTURE_EPOCH if not exiting)
+    </ResponseField>
+    
+    <ResponseField name="owner" type="string">
+      Ethereum address of the validator owner (hex-encoded)
+    </ResponseField>
+    
+    <ResponseField name="committee" type="array">
+      Array of operator IDs forming the validator committee
+    </ResponseField>
+    
+    <ResponseField name="quorum" type="integer">
+      Required number of operator signatures (deprecated, not used)
+    </ResponseField>
+    
+    <ResponseField name="partial_quorum" type="integer">
+      Required number for partial quorum (deprecated, not used)
+    </ResponseField>
+    
+    <ResponseField name="graffiti" type="string">
+      Custom graffiti string for block proposals
+    </ResponseField>
+    
+    <ResponseField name="liquidated" type="boolean">
+      Whether the validator cluster has been liquidated
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Example Requests
+
+### List all validators
+
+```bash
+curl http://localhost:16000/v1/validators
+```
+
+### Filter by owner
+
+```bash
+curl "http://localhost:16000/v1/validators?owners=0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb"
+```
+
+### Filter by operator
+
+```bash
+curl "http://localhost:16000/v1/validators?operators=1,2,3"
+```
+
+### Filter by exact cluster
+
+```bash
+curl "http://localhost:16000/v1/validators?clusters=1,2,3,4"
+```
+
+### Filter by public key
+
+```bash
+curl "http://localhost:16000/v1/validators?pubkeys=0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+```
+
+### Filter by validator indices
+
+```bash
+curl "http://localhost:16000/v1/validators?indices=100,200,300"
+```
+
+## Example Response
+
+```json
+{
+  "data": [
+    {
+      "public_key": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+      "index": 123456,
+      "status": "active_ongoing",
+      "activation_epoch": 50000,
+      "exit_epoch": 18446744073709551615,
+      "owner": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+      "committee": [1, 2, 3, 4],
+      "quorum": 0,
+      "partial_quorum": 0,
+      "graffiti": "SSV.Network",
+      "liquidated": false
+    },
+    {
+      "public_key": "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef12345678",
+      "index": 0,
+      "status": "",
+      "activation_epoch": 0,
+      "exit_epoch": 0,
+      "owner": "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb",
+      "committee": [5, 6, 7, 8],
+      "quorum": 0,
+      "partial_quorum": 0,
+      "graffiti": "",
+      "liquidated": false
+    }
+  ]
+}
+```
+
+## Filter Behavior
+
+### Multiple Filters
+
+When multiple filters are provided, they are combined with AND logic:
+
+```bash
+# Returns validators owned by address AND operated by operator 1
+curl "http://localhost:16000/v1/validators?owners=0x742d...&operators=1"
+```
+
+### Multiple Values in Same Filter
+
+Multiple values within a single filter use OR logic:
+
+```bash
+# Returns validators with operator 1 OR operator 2 OR operator 3
+curl "http://localhost:16000/v1/validators?operators=1,2,3"
+```
+
+### Clusters vs Subclusters
+
+- **clusters**: Exact match - the validator's committee must exactly match the specified operators
+- **subclusters**: Partial match - the validator's committee must contain all specified operators (but may have more)
+
+```bash
+# Exact match: only validators with committee [1,2,3,4]
+curl "http://localhost:16000/v1/validators?clusters=1,2,3,4"
+
+# Partial match: validators with committees containing both 1 and 2 (e.g., [1,2,3,4] or [1,2,5,6])
+curl "http://localhost:16000/v1/validators?subclusters=1,2"
+```
+
+## Validator Status Values
+
+The `status` field reflects the beacon chain validator status:
+
+| Status | Description |
+|--------|-------------|
+| `pending_initialized` | Deposit processed, waiting in queue |
+| `pending_queued` | In activation queue |
+| `active_ongoing` | Active and performing duties |
+| `active_exiting` | Active but exit initiated |
+| `active_slashed` | Slashed while active |
+| `exited_unslashed` | Exited cleanly |
+| `exited_slashed` | Exited due to slashing |
+| `withdrawal_possible` | Withdrawals can be processed |
+| `withdrawal_done` | Fully withdrawn |
+| (empty) | No beacon metadata available yet |
+
+## Use Cases
+
+### Monitoring Specific Validators
+
+```bash
+# Track validators by public key
+curl "http://localhost:16000/v1/validators?pubkeys=0x1234...,0x5678..." | jq '.data[] | {index, status}'
+```
+
+### Operator Health Checks
+
+```bash
+# Check all validators for a specific operator
+curl "http://localhost:16000/v1/validators?operators=42" | jq '.data | length'
+```
+
+### Cluster Analysis
+
+```bash
+# Find validators with a specific operator combination
+curl "http://localhost:16000/v1/validators?clusters=1,2,3,4" | jq '.data[] | {public_key, status}'
+```
+
+## Source Code Reference
+
+Implementation: `/home/daytona/workspace/source/api/handlers/validators/validators.go:20`

@@ -1,0 +1,246 @@
+---
+title: 'CLI Overview'
+description: 'Command-line interface for SSV Node operations'
+icon: 'terminal'
+---
+
+## Introduction
+
+The SSV Node CLI (`ssvnode`) provides commands for running and managing SSV operators. It includes tools for:
+
+- Running an SSV operator node
+- Generating operator keys (encrypted or raw)
+- Creating threshold validator keys for distributed validation
+- Exporting validator keys from mnemonic phrases
+
+## Installation
+
+Build the SSV Node CLI from source:
+
+```bash
+make build
+```
+
+The binary will be available at `./bin/ssvnode`.
+
+## Available Commands
+
+<CardGroup cols={2}>
+  <Card title="start-node" icon="play" href="/cli/start-node">
+    Start an SSV operator node instance
+  </Card>
+  <Card title="generate-operator-keys" icon="key" href="/cli/generate-operator-keys">
+    Generate operator keys for contract event decryption
+  </Card>
+  <Card title="create-threshold" icon="share-nodes" href="/cli/create-threshold">
+    Split validator keys into threshold shares
+  </Card>
+  <Card title="export-keys" icon="file-export" href="/cli/export-keys">
+    Extract validator keys from mnemonic phrase
+  </Card>
+</CardGroup>
+
+## Common Usage Patterns
+
+### Setting Up a New Operator
+
+1. **Generate operator keys** (encrypted format recommended for production):
+
+```bash
+./bin/ssvnode generate-operator-keys --password-file=password.txt
+```
+
+This creates `encrypted_private_key.json` that you'll reference in your config.
+
+2. **Configure your node** by creating a `config.yaml` file:
+
+```yaml
+KeyStore:
+  PrivateKeyFile: ./encrypted_private_key.json
+  PasswordFile: ./password.txt
+
+ssv:
+  Network: mainnet
+
+eth2:
+  BeaconNodeAddr: http://localhost:5052
+
+eth1:
+  ETH1Addr: ws://localhost:8546/ws
+```
+
+3. **Start the node**:
+
+```bash
+./bin/ssvnode start-node --config=./config.yaml
+```
+
+### Creating Validator Shares for Testing
+
+For local testing, you can split a validator key into shares:
+
+```bash
+# Export validator keys from mnemonic
+./bin/ssvnode export-keys --mnemonic="your 24 word mnemonic" --index=0
+
+# Create threshold shares (4 operators)
+./bin/ssvnode create-threshold --private-key=<validator-private-key> --count=4
+```
+
+<Warning>
+  The `create-threshold` and `export-keys` commands are for **testing only**. 
+  For production, use [ssv-keys](https://github.com/ssvlabs/ssv-keys) to generate shares securely.
+</Warning>
+
+## Configuration Methods
+
+SSV Node supports multiple configuration methods:
+
+### 1. Configuration File (Recommended)
+
+Create a YAML configuration file:
+
+```bash
+./bin/ssvnode start-node --config=./config.yaml
+```
+
+### 2. Environment Variables
+
+All configuration options can be set via environment variables:
+
+```bash
+export LOG_LEVEL=debug
+export SSV_NETWORK=mainnet
+export BEACON_NODE_ADDR=http://localhost:5052
+./bin/ssvnode start-node
+```
+
+### 3. Hybrid Approach
+
+Combine config files with environment variable overrides. Environment variables take precedence.
+
+## Security Best Practices
+
+<AccordionGroup>
+  <Accordion title="Operator Key Security">
+    - **Always use encrypted keystores** in production (generated with `--password-file`)
+    - Never commit raw private keys to version control
+    - Store password files separately from keystore files
+    - Use file permissions to restrict access: `chmod 600 encrypted_private_key.json`
+  </Accordion>
+
+  <Accordion title="Network Security">
+    - Keep the SSV API port (`SSVAPIPort`) private and not exposed to the internet
+    - Use firewalls to restrict access to node ports
+    - Only expose P2P ports (TCP/UDP) to the internet
+  </Accordion>
+
+  <Accordion title="Validator Key Management">
+    - Use `ssv-keys` tool for production validator key splitting
+    - Never use `create-threshold` or `export-keys` in production environments
+    - Keep validator key shares distributed across operators
+  </Accordion>
+</AccordionGroup>
+
+## Logging and Debugging
+
+### Log Levels
+
+Control log verbosity with the `LogLevel` configuration:
+
+- `debug` - Detailed information for debugging
+- `info` - General operational information (default)
+- `warn` - Warning messages
+- `error` - Error messages
+- `fatal` - Critical errors that cause shutdown
+- `panic` - Severe errors with stack trace
+
+### Log Formats
+
+```yaml
+# Console output (human-readable)
+LogFormat: console
+LogLevelFormat: capitalColor
+
+# JSON output (machine-readable)
+LogFormat: json
+LogLevelFormat: lowercase
+```
+
+### Log Files
+
+Configure log file rotation:
+
+```yaml
+LogFilePath: ./data/debug.log
+LogFileSize: 500  # MB before rotation
+LogFileBackups: 3  # Number of rotated files to keep
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Binary not found">
+    Build the binary first:
+    ```bash
+    make build
+    ls -la ./bin/ssvnode
+    ```
+  </Accordion>
+
+  <Accordion title="Config file not found">
+    Specify the full path to your config file:
+    ```bash
+    ./bin/ssvnode start-node --config=/path/to/config.yaml
+    ```
+  </Accordion>
+
+  <Accordion title="Failed to decrypt keystore">
+    Ensure your password file contains the correct password:
+    ```bash
+    cat password.txt  # Verify password
+    # Re-generate keystore if needed
+    ./bin/ssvnode generate-operator-keys --password-file=password.txt
+    ```
+  </Accordion>
+
+  <Accordion title="Cannot connect to beacon node">
+    Verify beacon node is running and accessible:
+    ```bash
+    curl http://localhost:5052/eth/v1/node/version
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Version Information
+
+Check the installed version:
+
+```bash
+./bin/ssvnode version
+```
+
+Get help for any command:
+
+```bash
+./bin/ssvnode --help
+./bin/ssvnode start-node --help
+./bin/ssvnode generate-operator-keys --help
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Start Node" icon="play" href="/cli/start-node">
+    Learn about all start-node configuration options
+  </Card>
+  <Card title="Generate Keys" icon="key" href="/cli/generate-operator-keys">
+    Generate operator keys for your node
+  </Card>
+  <Card title="Configuration" icon="gear" href="/operators/installation/prerequisites">
+    Full configuration reference
+  </Card>
+  <Card title="Running Locally" icon="laptop-code" href="/developers/local-development">
+    Set up a local development environment
+  </Card>
+</CardGroup>

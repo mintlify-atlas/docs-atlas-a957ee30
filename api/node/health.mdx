@@ -1,0 +1,135 @@
+---
+title: 'Health Check'
+api: 'GET /v1/node/health'
+description: 'Check the health status of the SSV node and its dependencies'
+---
+
+Returns comprehensive health information about the SSV node, including P2P connectivity, peer count, and external service dependencies.
+
+## Endpoint
+
+```
+GET /v1/node/health
+```
+
+## Response
+
+<ResponseField name="p2p" type="string" required>
+  P2P network health status. Returns `"good"` or `"bad: <error message>"`
+</ResponseField>
+
+<ResponseField name="beacon_node" type="string" required>
+  Beacon node connectivity status. Returns `"good"` or `"bad: <error message>"`
+</ResponseField>
+
+<ResponseField name="execution_node" type="string" required>
+  Execution node connectivity status. Returns `"good"` or `"bad: <error message>"`
+</ResponseField>
+
+<ResponseField name="event_syncer" type="string" required>
+  Event syncer health status. Returns `"good"` or `"bad: <error message>"`
+</ResponseField>
+
+<ResponseField name="advanced" type="object" required>
+  <Expandable title="properties">
+    <ResponseField name="peers" type="integer">
+      Number of connected peers
+    </ResponseField>
+    
+    <ResponseField name="inbound_conns" type="integer">
+      Number of inbound P2P connections
+    </ResponseField>
+    
+    <ResponseField name="outbound_conns" type="integer">
+      Number of outbound P2P connections
+    </ResponseField>
+    
+    <ResponseField name="p2p_listen_addresses" type="array">
+      List of P2P listen addresses (multiaddrs)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Health Criteria
+
+The node is considered healthy when:
+
+- **P2P**: At least 20 connected peers AND at least 4 inbound connections
+- **Beacon Node**: Successfully responds to health probe
+- **Execution Node**: Successfully responds to health probe  
+- **Event Syncer**: Successfully syncing contract events
+
+## Example Request
+
+```bash
+curl http://localhost:16000/v1/node/health
+```
+
+## Example Response
+
+```json
+{
+  "p2p": "good",
+  "beacon_node": "good",
+  "execution_node": "good",
+  "event_syncer": "good",
+  "advanced": {
+    "peers": 45,
+    "inbound_conns": 12,
+    "outbound_conns": 33,
+    "p2p_listen_addresses": [
+      "/ip4/0.0.0.0/tcp/13001",
+      "/ip4/0.0.0.0/udp/12001/quic"
+    ]
+  }
+}
+```
+
+## Unhealthy Response Example
+
+```json
+{
+  "p2p": "bad: not enough connected peers",
+  "beacon_node": "good",
+  "execution_node": "bad: connection timeout",
+  "event_syncer": "good",
+  "advanced": {
+    "peers": 15,
+    "inbound_conns": 3,
+    "outbound_conns": 12,
+    "p2p_listen_addresses": [
+      "/ip4/0.0.0.0/tcp/13001"
+    ]
+  }
+}
+```
+
+## Common Issues
+
+### Not enough peers
+
+If `p2p` shows "bad: no peers are connected" or "bad: not enough connected peers":
+
+- Check network connectivity
+- Verify firewall settings
+- Ensure bootstrap nodes are reachable
+
+### Port not reachable
+
+If you see "bad: not enough inbound connections, port is likely not reachable":
+
+- Verify port forwarding configuration
+- Check firewall rules for TCP/UDP ports
+- Confirm the node's public IP is correctly configured
+
+### External service failures
+
+If `beacon_node`, `execution_node`, or `event_syncer` show errors:
+
+- Verify endpoint URLs in node configuration
+- Check connectivity to Ethereum nodes
+- Review node logs for detailed error messages
+
+## Source Code Reference
+
+Implementation: `/home/daytona/workspace/source/api/handlers/node/node.go:82`

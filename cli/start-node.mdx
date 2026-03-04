@@ -1,0 +1,468 @@
+---
+title: 'start-node'
+description: 'Start an SSV operator node instance'
+icon: 'play'
+---
+
+## Overview
+
+The `start-node` command starts an SSV operator node instance. This is the main command for running an SSV operator that participates in distributed validator duties.
+
+## Usage
+
+```bash
+ssvnode start-node [flags]
+```
+
+## Required Configuration
+
+The node requires a configuration file specified via the `--config` flag. At minimum, you must configure:
+
+- Operator private key (via `OperatorPrivateKey` or `KeyStore`)
+- SSV network (`ssv.Network`)
+- Beacon node endpoint (`eth2.BeaconNodeAddr`)
+- Execution client endpoint (`eth1.ETH1Addr`)
+
+## Flags
+
+<ParamField path="--config" type="string" default="./config/config.yaml" required>
+  Path to the main configuration file (YAML format).
+  
+  ```bash
+  ssvnode start-node --config=/path/to/config.yaml
+  ```
+</ParamField>
+
+<ParamField path="--share-config" type="string" default="">
+  Path to an additional share configuration file that will override values from the main config.
+  
+  Useful for separating operator-specific settings from general configuration.
+  
+  ```bash
+  ssvnode start-node --config=./config.yaml --share-config=./share.yaml
+  ```
+</ParamField>
+
+## Configuration Options
+
+All configuration is done via YAML files or environment variables. Below are the key configuration sections:
+
+### Operator Identity
+
+<ParamField path="OperatorPrivateKey" type="string" env="OPERATOR_KEY">
+  Base64-encoded operator private key for contract event decryption.
+  
+  <Warning>
+    Using raw private keys is **not recommended** for production. Use encrypted keystores instead.
+  </Warning>
+  
+  ```yaml
+  OperatorPrivateKey: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQ...
+  ```
+</ParamField>
+
+<ParamField path="KeyStore" type="object">
+  **Recommended**: Use encrypted keystore for operator private key.
+  
+  <Expandable title="KeyStore fields">
+    <ParamField path="PrivateKeyFile" type="string" env="PRIVATE_KEY_FILE">
+      Path to encrypted operator private key file (keystore JSON).
+    </ParamField>
+    
+    <ParamField path="PasswordFile" type="string" env="PASSWORD_FILE">
+      Path to file containing the password for keystore decryption.
+    </ParamField>
+  </Expandable>
+  
+  ```yaml
+  KeyStore:
+    PrivateKeyFile: ./encrypted_private_key.json
+    PasswordFile: ./password.txt
+  ```
+</ParamField>
+
+### SSV Network
+
+<ParamField path="ssv.Network" type="string" default="mainnet" env="SSV_NETWORK">
+  The SSV network to join.
+  
+  Valid values:
+  - `mainnet` - Production network
+  - `holesky` - Holesky testnet
+  
+  ```yaml
+  ssv:
+    Network: mainnet
+  ```
+</ParamField>
+
+### Consensus Layer (Beacon Node)
+
+<ParamField path="eth2.BeaconNodeAddr" type="string" required env="BEACON_NODE_ADDR">
+  HTTP URL of the beacon node to connect to.
+  
+  ```yaml
+  eth2:
+    BeaconNodeAddr: http://localhost:5052
+  ```
+</ParamField>
+
+<ParamField path="eth2.WithWeightedAttestationData" type="boolean" default="false">
+  Enable weighted attestation data from multiple beacon nodes for increased reliability.
+</ParamField>
+
+<ParamField path="eth2.WithParallelSubmissions" type="boolean" default="false">
+  Enable parallel duty submissions to multiple beacon nodes.
+</ParamField>
+
+### Execution Layer
+
+<ParamField path="eth1.ETH1Addr" type="string" required env="ETH1_ADDR">
+  WebSocket URL of the execution client to connect to.
+  
+  Used for syncing SSV contract events (validator registrations, operator changes, etc.).
+  
+  ```yaml
+  eth1:
+    ETH1Addr: ws://localhost:8546/ws
+  ```
+</ParamField>
+
+### P2P Network
+
+<ParamField path="p2p.HostAddress" type="string" env="HOST_ADDRESS">
+  External IP address of the node (auto-detected if not specified).
+  
+  ```yaml
+  p2p:
+    HostAddress: 192.168.1.100
+  ```
+</ParamField>
+
+<ParamField path="p2p.TcpPort" type="int" default="13001" env="TCP_PORT">
+  TCP port for P2P communication.
+</ParamField>
+
+<ParamField path="p2p.UdpPort" type="int" default="12001" env="UDP_PORT">
+  UDP port for P2P discovery.
+</ParamField>
+
+<ParamField path="p2p.Discovery" type="string" default="discv5">
+  P2P discovery mechanism.
+  
+  - `discv5` - Standard discovery (production)
+  - `mdns` - Local network discovery (development only)
+</ParamField>
+
+<ParamField path="NetworkPrivateKey" type="string" env="NETWORK_PRIVATE_KEY">
+  Private key for P2P network identity. Auto-generated if not provided.
+</ParamField>
+
+### Database
+
+<ParamField path="db.Path" type="string" default="./data/db">
+  Path to persistent directory for node database storage.
+  
+  ```yaml
+  db:
+    Path: ./data/db
+  ```
+</ParamField>
+
+### MEV Configuration
+
+<ParamField path="ProposerDelay" type="duration" default="0s" env="PROPOSER_DELAY">
+  Duration to wait before requesting a block proposal if this operator is the proposer-duty leader.
+  
+  Allows extracting higher MEV by waiting for better bids. Recommended starting value: `300ms`.
+  
+  <Warning>
+    Values above 1s significantly increase the risk of missing block proposals!
+  </Warning>
+  
+  ```yaml
+  ProposerDelay: 300ms
+  ```
+  
+  See [Production Deployment](/deployment/production) for detailed MEV guidance.
+</ParamField>
+
+<ParamField path="AllowDangerousProposerDelay" type="boolean" default="false" env="ALLOW_DANGEROUS_PROPOSER_DELAY">
+  Safety flag to allow `ProposerDelay` values higher than 1s.
+  
+  <Warning>
+    Only enable if you understand the risks of missed proposals.
+  </Warning>
+</ParamField>
+
+<ParamField path="Graffiti" type="string" default="ssv.network" env="GRAFFITI">
+  Custom graffiti string for block proposals.
+  
+  ```yaml
+  Graffiti: "My SSV Operator"
+  ```
+</ParamField>
+
+### API Servers
+
+<ParamField path="MetricsAPIPort" type="int" default="0" env="METRICS_API_PORT">
+  Port for Prometheus metrics endpoint. Set to `0` to disable.
+  
+  ```yaml
+  MetricsAPIPort: 15000
+  ```
+  
+  Access metrics at `http://localhost:15000/metrics`
+</ParamField>
+
+<ParamField path="SSVAPIPort" type="int" default="0" env="SSV_API_PORT">
+  Port for SSV REST API. Set to `0` to disable.
+  
+  <Warning>
+    Keep this port private to prevent resource-intensive attacks.
+  </Warning>
+  
+  ```yaml
+  SSVAPIPort: 16000
+  ```
+</ParamField>
+
+<ParamField path="WsAPIPort" type="int" default="0" env="WS_API_PORT">
+  Port for WebSocket API server.
+</ParamField>
+
+<ParamField path="WithPing" type="boolean" default="false" env="WITH_PING">
+  Enable WebSocket ping messages.
+</ParamField>
+
+### Logging
+
+<ParamField path="LogLevel" type="string" default="info" env="LOG_LEVEL">
+  Logger verbosity level.
+  
+  Valid values: `debug`, `info`, `warn`, `error`, `fatal`, `panic`
+  
+  ```yaml
+  global:
+    LogLevel: debug
+  ```
+</ParamField>
+
+<ParamField path="LogFormat" type="string" default="console" env="LOG_FORMAT">
+  Logger encoding format.
+  
+  - `console` - Human-readable (default)
+  - `json` - Machine-readable JSON
+</ParamField>
+
+<ParamField path="LogLevelFormat" type="string" default="capitalColor" env="LOG_LEVEL_FORMAT">
+  Log level formatting style.
+  
+  - `capitalColor` - Colored output (default for console)
+  - `capital` - Capitalized without color
+  - `lowercase` - Lowercase level names
+</ParamField>
+
+<ParamField path="LogFilePath" type="string" default="./data/debug.log" env="LOG_FILE_PATH">
+  File path for log output.
+</ParamField>
+
+<ParamField path="LogFileSize" type="int" default="500" env="LOG_FILE_SIZE">
+  Maximum log file size in megabytes before rotation.
+</ParamField>
+
+<ParamField path="LogFileBackups" type="int" default="3" env="LOG_FILE_BACKUPS">
+  Number of rotated log files to keep.
+</ParamField>
+
+### Advanced Options
+
+<ParamField path="EnableTraces" type="boolean" default="false" env="ENABLE_TRACES">
+  Enable OpenTelemetry distributed traces.
+</ParamField>
+
+<ParamField path="EnableProfile" type="boolean" default="false" env="ENABLE_PROFILE">
+  Enable Go profiling tools (pprof).
+</ParamField>
+
+<ParamField path="EnableDoppelgangerProtection" type="boolean" default="false" env="ENABLE_DOPPELGANGER_PROTECTION">
+  Enable doppelganger protection to prevent running duplicate validators.
+</ParamField>
+
+<ParamField path="LocalEventsPath" type="string" env="EVENTS_PATH">
+  Path to local events file for testing/development.
+  
+  ```yaml
+  LocalEventsPath: ./config/events.yaml
+  ```
+</ParamField>
+
+## Examples
+
+### Basic Configuration
+
+```yaml config.yaml
+global:
+  LogLevel: info
+  LogFilePath: ./data/debug.log
+
+db:
+  Path: ./data/db
+
+ssv:
+  Network: mainnet
+
+eth2:
+  BeaconNodeAddr: http://localhost:5052
+
+eth1:
+  ETH1Addr: ws://localhost:8546/ws
+
+p2p:
+  TcpPort: 13001
+  UdpPort: 12001
+
+KeyStore:
+  PrivateKeyFile: ./encrypted_private_key.json
+  PasswordFile: ./password.txt
+
+MetricsAPIPort: 15000
+```
+
+```bash
+./bin/ssvnode start-node --config=./config.yaml
+```
+
+### Configuration with MEV
+
+```yaml config.yaml
+ssv:
+  Network: mainnet
+
+eth2:
+  BeaconNodeAddr: http://localhost:5052
+
+eth1:
+  ETH1Addr: ws://localhost:8546/ws
+
+KeyStore:
+  PrivateKeyFile: ./encrypted_private_key.json
+  PasswordFile: ./password.txt
+
+# MEV Configuration
+ProposerDelay: 300ms
+Graffiti: "My MEV Operator"
+
+MetricsAPIPort: 15000
+```
+
+### Multi-Beacon Node Setup
+
+```yaml config.yaml
+eth2:
+  BeaconNodeAddr: http://localhost:5052,http://backup:5052
+  WithWeightedAttestationData: true
+  WithParallelSubmissions: true
+
+eth1:
+  ETH1Addr: ws://localhost:8546/ws
+
+KeyStore:
+  PrivateKeyFile: ./encrypted_private_key.json
+  PasswordFile: ./password.txt
+```
+
+### Environment Variables
+
+```bash
+export LOG_LEVEL=debug
+export SSV_NETWORK=mainnet
+export BEACON_NODE_ADDR=http://localhost:5052
+export ETH1_ADDR=ws://localhost:8546/ws
+export PRIVATE_KEY_FILE=./encrypted_private_key.json
+export PASSWORD_FILE=./password.txt
+export METRICS_API_PORT=15000
+
+./bin/ssvnode start-node
+```
+
+## Output
+
+When the node starts successfully, you'll see:
+
+```
+2026-03-04T12:00:00.000Z	INFO	starting SSV-Node-v1.4.0-abc123def
+2026-03-04T12:00:00.100Z	INFO	connecting CL(s)	{"Address": "http://localhost:5052"}
+2026-03-04T12:00:00.200Z	INFO	beacon client ready	{"version": "Lighthouse/v4.5.0"}
+2026-03-04T12:00:00.300Z	INFO	starting P2P network	{"tcp": 13001, "udp": 12001}
+2026-03-04T12:00:00.400Z	INFO	node started successfully
+```
+
+## Common Issues
+
+<AccordionGroup>
+  <Accordion title="Config file not found">
+    ```
+    could not read config: open ./config/config.yaml: no such file or directory
+    ```
+    
+    **Solution**: Specify the correct path to your config file:
+    ```bash
+    ./bin/ssvnode start-node --config=/full/path/to/config.yaml
+    ```
+  </Accordion>
+
+  <Accordion title="Failed to decrypt keystore">
+    ```
+    Failed to decrypt private key
+    ```
+    
+    **Solution**: Ensure your password file contains the correct password:
+    ```bash
+    cat password.txt  # Verify password is correct
+    ```
+  </Accordion>
+
+  <Accordion title="Cannot connect to beacon node">
+    ```
+    failed to create beacon client: context deadline exceeded
+    ```
+    
+    **Solution**: Verify beacon node is running and accessible:
+    ```bash
+    curl http://localhost:5052/eth/v1/node/version
+    ```
+  </Accordion>
+
+  <Accordion title="Cannot connect to execution client">
+    ```
+    failed to connect to execution client
+    ```
+    
+    **Solution**: Check WebSocket connection:
+    ```bash
+    # Test WebSocket connectivity
+    wscat -c ws://localhost:8546/ws
+    ```
+  </Accordion>
+
+  <Accordion title="Port already in use">
+    ```
+    bind: address already in use
+    ```
+    
+    **Solution**: Change the port in your config or stop the conflicting process:
+    ```yaml
+    p2p:
+      TcpPort: 13002  # Use different port
+      UdpPort: 12002
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## See Also
+
+- [generate-operator-keys](/cli/generate-operator-keys) - Generate operator keys
+- [Configuration Reference](/getting-started/configuration) - Detailed config options
+- [Monitoring](/monitoring/metrics) - Set up metrics and monitoring
+- [Production Deployment](/deployment/production) - MEV setup guide

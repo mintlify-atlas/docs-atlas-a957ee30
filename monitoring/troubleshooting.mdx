@@ -1,0 +1,741 @@
+---
+title: Troubleshooting Guide
+description: Common issues, debugging techniques, and solutions for SSV Node operators
+---
+
+This guide covers common issues encountered when running SSV Node, along with debugging techniques and solutions based on logs, metrics, and operational best practices.
+
+## Quick Diagnostics
+
+Start with these quick checks when troubleshooting:
+
+```bash
+# Check node health
+curl http://localhost:15000/health
+
+# Check if metrics are being collected
+curl http://localhost:15000/metrics | grep ssv_
+
+# View recent logs (if using systemd)
+journalctl -u ssv-node -n 100 --no-pager
+
+# Check validator status
+curl http://localhost:13000/api/v1/validators
+```
+
+<Tip>
+Always check both logs and metrics when troubleshooting. Logs provide context, while metrics show trends and quantitative data.
+</Tip>
+
+## Common Issues
+
+### Node Startup Issues
+
+<AccordionGroup>
+  <Accordion title="Node fails to start - Configuration errors">
+    **Symptoms**:
+    - Node exits immediately on startup
+    - Fatal error logs about configuration
+    - Port already in use errors
+
+    **Log examples**:
+    ```json
+    {"level":"FATAL","msg":"failed to parse configuration","error":"invalid beacon node address"}
+    {"level":"FATAL","msg":"listen to 0.0.0.0:13001","error":"bind: address already in use"}
+    ```
+
+    **Solutions**:
+
+    1. Validate your configuration file:
+    ```bash
+    ./bin/ssvnode start-node --config=./config.yaml --dry-run
+    ```
+
+    2. Check for port conflicts:
+    ```bash
+    # Check if ports are already in use
+    lsof -i :13000  # API port
+    lsof -i :13001  # P2P TCP port
+    lsof -i :12001  # P2P UDP port
+    lsof -i :15000  # Metrics port
+    ```
+
+    3. Verify beacon node connectivity:
+    ```bash
+    curl http://your-beacon-node:5052/eth/v1/node/version
+    ```
+
+    4. Review required configuration fields:
+    - `eth2.BeaconNodeAddr`
+    - `OperatorPrivateKey` or `KeyStore`
+    - Valid network configuration (ports, discovery)
+
+    <Note>
+    Ensure your beacon node is fully synced before starting SSV Node.
+    </Note>
+  </Accordion>
+
+  <Accordion title="Database initialization failures">
+    **Symptoms**:
+    - Error logs about database access
+    - Permission denied errors
+    - Corrupted database errors
+
+    **Log examples**:
+    ```json
+    {"level":"FATAL","msg":"failed to open database","error":"permission denied: ./data"}
+    {"level":"ERROR","msg":"database corruption detected","path":"./data/db"}
+    ```
+
+    **Solutions**:
+
+    1. Check directory permissions:
+    ```bash
+    ls -la ./data
+    # Ensure SSV node process user has read/write access
+    chown -R ssv:ssv ./data
+    chmod 700 ./data
+    ```
+
+    2. If database is corrupted, restore from backup:
+    ```bash
+    # Stop the node first
+    systemctl stop ssv-node
+    
+    # Move corrupted database
+    mv ./data/db ./data/db.corrupted
+    
+    # Restore from backup or resync from scratch
+    cp -r ./backups/db-latest ./data/db
+    
+    # Restart node
+    systemctl start ssv-node
+    ```
+
+    3. Verify sufficient disk space:
+    ```bash
+    df -h ./data
+    ```
+  </Accordion>
+
+  <Accordion title="Operator key issues">
+    **Symptoms**:
+    - Authentication failures
+    - Unable to participate in duties
+    - "Invalid operator key" errors
+
+    **Solutions**:
+
+    1. Verify operator key format:
+    ```bash
+    # Should be hex-encoded private key
+    cat operator-private-key.txt
+    # Format: 0x1234567890abcdef...
+    ```
+
+    2. Re-generate operator keys if needed:
+    ```bash
+    ./bin/ssvnode generate-operator-keys --password-file=password.txt
+    ```
+
+    3. Ensure operator is registered on the SSV contract:
+    ```bash
+    # Check operator registration status
+    # (Use SSV webapp or contract interaction tools)
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Validator Issues
+
+<AccordionGroup>
+  <Accordion title="Validator not participating in duties">
+    **Symptoms**:
+    - Validator shows as `not_participating` or `no_index`
+    - No attestations or proposals being submitted
+    - Missing validator duties
+
+    **Metric checks**:
+    ```promql
+    # Check validator status
+    ssv_validator_validators_per_status{ssv_validator_status="not_participating"}
+    ssv_validator_validators_per_status{ssv_validator_status="no_index"}
+    
+    # Check submission rates
+    rate(ssv_runner_submissions[5m])
+    rate(ssv_runner_submissions_failed[5m])
+    ```
+
+    **Log examples**:
+    ```json
+    {"level":"WARN","msg":"validator not found","validator":"0x8234..."}
+    {"level":"WARN","msg":"validator not yet participating","validator_index":12345}
+    {"level":"DEBUG","msg":"validator not yet activated","validator":"0x8234..."}
+    ```
+
+    **Solutions**:
+
+    1. Verify validator is registered:
+    ```bash
+    # Check validator on beacon chain
+    curl http://your-beacon-node:5052/eth/v1/beacon/states/head/validators/0x8234...
+    ```
+
+    2. Check validator shares are loaded:
+    ```bash
+    # Query database for validator shares
+    curl "http://localhost:15000/database/count-by-collection?prefix=shares"
+    
+    # Check validator API
+    curl http://localhost:13000/api/v1/validators
+    ```
+
+    3. Verify validator activation:
+    - Check beacon chain validator status
+    - Ensure sufficient balance (32 ETH)
+    - Verify activation queue position
+
+    4. Check operator cluster membership:
+    - Ensure operator is part of validator's cluster
+    - Verify cluster has minimum operators (4/10/13 scheme)
+    - Check operator IDs match cluster configuration
+  </Accordion>
+
+  <Accordion title="Failed duty submissions">
+    **Symptoms**:
+    - Increasing `ssv_runner_submissions_failed` counter
+    - Missed attestations or proposals
+    - Error logs about submission failures
+
+    **Metric checks**:
+    ```promql
+    # Failed submission rate
+    rate(ssv_runner_submissions_failed[5m])
+    
+    # Failed submissions by role
+    sum by (ssv_beacon_role) (rate(ssv_runner_submissions_failed[5m]))
+    
+    # Submission success rate
+    rate(ssv_runner_submissions[5m]) / 
+      (rate(ssv_runner_submissions[5m]) + rate(ssv_runner_submissions_failed[5m]))
+    ```
+
+    **Log examples**:
+    ```json
+    {"level":"ERROR","msg":"failed to submit attestation","error":"timeout exceeded","validator":"0x8234..."}
+    {"level":"ERROR","msg":"failed to submit proposal","error":"invalid signature","slot":394560}
+    ```
+
+    **Solutions**:
+
+    1. Check beacon node connectivity:
+    ```bash
+    # Test beacon node API
+    curl http://your-beacon-node:5052/eth/v1/node/health
+    
+    # Check submission endpoint
+    curl http://your-beacon-node:5052/eth/v1/beacon/pool/attestations
+    ```
+
+    2. Verify beacon node is synced:
+    ```bash
+    curl http://your-beacon-node:5052/eth/v1/node/syncing
+    # Should return: {"data":{"is_syncing":false}}
+    ```
+
+    3. Check for slashing protection issues:
+    - Review slashing protection database
+    - Ensure no duplicate validator instances
+    - Check for clock synchronization issues
+
+    4. Monitor consensus duration:
+    ```promql
+    # Should complete within 1-2 seconds
+    histogram_quantile(0.95, rate(ssv_runner_consensus_duration_bucket[5m]))
+    ```
+
+    <Warning>
+    Running multiple instances of the same validator can cause slashing. Ensure only one node is running per validator.
+    </Warning>
+  </Accordion>
+
+  <Accordion title="Validator slashing">
+    **Symptoms**:
+    - `ssv_validator_validators_per_status{status="slashed"}` > 0
+    - Validator balance decreasing dramatically
+    - Slashing event on beacon chain
+
+    **CRITICAL - Immediate Actions**:
+
+    1. **STOP THE NODE IMMEDIATELY**:
+    ```bash
+    systemctl stop ssv-node
+    ```
+
+    2. Investigate the cause:
+    - Check if multiple instances were running
+    - Review logs for double signing evidence
+    - Check system clock synchronization
+    - Verify slashing protection database integrity
+
+    3. **DO NOT RESTART** until root cause is identified and resolved
+
+    4. Common causes:
+    - Running duplicate validator instances
+    - Clock drift causing timing issues
+    - Corrupted slashing protection database
+    - Restored old database state
+
+    <Warning>
+    Slashing results in permanent loss of stake (minimum 1 ETH penalty, up to full stake). Prevention is critical.
+    </Warning>
+
+    **Prevention**:
+    - Never run multiple instances of the same validator
+    - Maintain accurate system time (use NTP)
+    - Regular database backups
+    - Proper shutdown procedures before migrations
+    - Test failover procedures in testnet first
+  </Accordion>
+</AccordionGroup>
+
+### Network and P2P Issues
+
+<AccordionGroup>
+  <Accordion title="No peers connected">
+    **Symptoms**:
+    - Zero or very few peers connected
+    - Unable to participate in consensus
+    - Isolated from network
+
+    **Diagnostic commands**:
+    ```bash
+    # Check peer count
+    curl http://localhost:13000/api/v1/node/peers | jq '.data | length'
+    
+    # Check P2P connectivity
+    netstat -an | grep -E ":(13001|12001)"
+    ```
+
+    **Solutions**:
+
+    1. Verify P2P ports are open:
+    ```bash
+    # Test UDP port (discovery)
+    nc -u -v your-public-ip 12001
+    
+    # Test TCP port (libp2p)
+    nc -v your-public-ip 13001
+    ```
+
+    2. Check firewall rules:
+    ```bash
+    # Allow inbound P2P connections
+    ufw allow 13001/tcp
+    ufw allow 12001/udp
+    ```
+
+    3. Verify NAT configuration:
+    - Configure port forwarding for 12001/udp and 13001/tcp
+    - Set correct external IP in config if behind NAT
+    ```yaml
+    p2p:
+      HostAddress: your-public-ip
+    ```
+
+    4. Check bootnode connectivity:
+    ```bash
+    # View logs for discovery events
+    journalctl -u ssv-node | grep -i "discovery\|peer"
+    ```
+  </Accordion>
+
+  <Accordion title="High message drop rate">
+    **Symptoms**:
+    - Logs showing "subscriber channel full, dropping the message"
+    - Delayed consensus
+    - Performance degradation
+
+    **Log examples**:
+    ```json
+    {"level":"WARN","msg":"subscriber channel full, dropping the message"}
+    {"level":"WARN","msg":"current slot and duty slot are not aligned"}
+    ```
+
+    **Metric checks**:
+    ```promql
+    # Queue size monitoring
+    ssv_queue_inbox_size
+    
+    # Processing duration
+    histogram_quantile(0.95, rate(ssv_tracer_processing_duration_bucket[5m]))
+    ```
+
+    **Solutions**:
+
+    1. Check system resources:
+    ```bash
+    # CPU usage
+    top -b -n 1 | grep ssvnode
+    
+    # Memory usage
+    free -h
+    
+    # Disk I/O
+    iostat -x 1 5
+    ```
+
+    2. Reduce log verbosity if using debug level:
+    ```yaml
+    LogLevel: "info"  # Change from debug to info
+    ```
+
+    3. Optimize database performance:
+    - Ensure SSD storage for database
+    - Check disk I/O wait times
+    - Consider BadgerDB tuning parameters
+
+    4. Scale hardware resources:
+    - Increase CPU cores
+    - Add more RAM
+    - Use faster storage (NVMe)
+  </Accordion>
+</AccordionGroup>
+
+### Performance Issues
+
+<AccordionGroup>
+  <Accordion title="Slow consensus / High round changes">
+    **Symptoms**:
+    - High `ssv_qbft_rounds_changed` counter
+    - Consensus taking >2 seconds
+    - Frequent round timeouts
+
+    **Metric checks**:
+    ```promql
+    # Round change rate
+    rate(ssv_qbft_rounds_changed[5m])
+    
+    # Consensus duration (95th percentile)
+    histogram_quantile(0.95, rate(ssv_runner_consensus_duration_bucket[5m]))
+    
+    # Per-phase durations
+    histogram_quantile(0.95, rate(ssv_runner_pre_consensus_duration_bucket[5m]))
+    histogram_quantile(0.95, rate(ssv_runner_post_consensus_duration_bucket[5m]))
+    ```
+
+    **Solutions**:
+
+    1. Check network latency to other operators:
+    ```bash
+    # Ping cluster operators (if known)
+    ping operator-1.example.com
+    mtr operator-1.example.com
+    ```
+
+    2. Verify system clock synchronization:
+    ```bash
+    # Check NTP sync status
+    timedatectl status
+    
+    # Verify offset is minimal (<50ms)
+    chronyc tracking
+    ```
+
+    3. Check for underperforming cluster members:
+    - Review operator performance in cluster
+    - Consider replacing slow/unreliable operators
+    - Verify all operators are online
+
+    4. Monitor duty timing:
+    ```promql
+    # Slot delay (should be minimal)
+    histogram_quantile(0.95, rate(ssv_scheduler_slot_delay_bucket[5m]))
+    ```
+  </Accordion>
+
+  <Accordion title="High memory or CPU usage">
+    **Symptoms**:
+    - Node consuming excessive resources
+    - System becoming unresponsive
+    - OOM killer terminating node
+
+    **Diagnostic commands**:
+    ```bash
+    # Memory usage breakdown
+    curl http://localhost:15000/debug/pprof/heap > heap.prof
+    go tool pprof -http=:8080 heap.prof
+    
+    # CPU profiling
+    curl http://localhost:15000/debug/pprof/profile?seconds=30 > cpu.prof
+    go tool pprof -http=:8080 cpu.prof
+    
+    # Goroutine analysis
+    curl http://localhost:15000/debug/pprof/goroutine > goroutine.prof
+    ```
+
+    **Solutions**:
+
+    1. Check for memory leaks:
+    - Review heap profile for growing allocations
+    - Monitor memory over time
+    - Report findings to SSV team if leak detected
+
+    2. Reduce load:
+    ```yaml
+    # Disable profiling if not needed
+    EnableProfile: false
+    
+    # Use info level logging
+    LogLevel: "info"
+    ```
+
+    3. Optimize database:
+    ```bash
+    # Check database size
+    du -sh ./data/db
+    
+    # Database may need compaction (automatic in BadgerDB)
+    ```
+
+    4. Hardware recommendations:
+    - **Minimum**: 4 CPU cores, 8GB RAM
+    - **Recommended**: 8+ CPU cores, 16GB+ RAM
+    - **Storage**: SSD/NVMe with 100GB+ free space
+  </Accordion>
+</AccordionGroup>
+
+### Beacon Node Integration Issues
+
+<AccordionGroup>
+  <Accordion title="Beacon node connection failures">
+    **Symptoms**:
+    - Repeated connection errors in logs
+    - Unable to fetch duties
+    - No duty execution
+
+    **Log examples**:
+    ```json
+    {"level":"ERROR","msg":"failed to fetch duties for current epoch","error":"connection refused"}
+    {"level":"ERROR","msg":"couldn't fetch node version","error":"context deadline exceeded"}
+    ```
+
+    **Solutions**:
+
+    1. Verify beacon node is running and accessible:
+    ```bash
+    curl http://your-beacon-node:5052/eth/v1/node/health
+    curl http://your-beacon-node:5052/eth/v1/node/version
+    ```
+
+    2. Check network connectivity:
+    ```bash
+    # Test connection
+    telnet your-beacon-node 5052
+    
+    # Check DNS resolution
+    nslookup your-beacon-node
+    ```
+
+    3. Verify beacon node is synced:
+    ```bash
+    curl http://your-beacon-node:5052/eth/v1/node/syncing
+    ```
+
+    4. Configure multiple beacon nodes for redundancy:
+    ```yaml
+    eth2:
+      BeaconNodeAddr: http://beacon-1:5052,http://beacon-2:5052
+    ```
+  </Accordion>
+
+  <Accordion title="Chain reorg handling issues">
+    **Symptoms**:
+    - Frequent reorg event logs
+    - Duty execution errors after reorgs
+    - Inconsistent state
+
+    **Log examples**:
+    ```json
+    {"level":"INFO","msg":"🔀 reorg event received","event":{"slot":394560,"depth":2}}
+    ```
+
+    **Analysis**:
+
+    1. Check reorg frequency and depth:
+    ```bash
+    # Count reorgs in last hour
+    journalctl -u ssv-node --since "1 hour ago" | grep "reorg event" | wc -l
+    
+    # Check reorg depth
+    journalctl -u ssv-node | grep "reorg event" | grep -o '"depth":[0-9]*'
+    ```
+
+    2. Shallow reorgs (1-2 blocks) are normal
+    3. Deep reorgs (>3 blocks) indicate beacon chain issues
+
+    **Solutions**:
+    - Ensure beacon node is well-connected to network
+    - Verify beacon node is following correct chain
+    - Check beacon node peers and sync status
+    - Monitor beacon chain health (external tools)
+  </Accordion>
+</AccordionGroup>
+
+## Debugging Tools
+
+### Health Check Endpoint
+
+```bash
+# Basic health check
+curl -v http://localhost:15000/health
+
+# Expected response when healthy:
+# HTTP/1.1 200 OK
+
+# Error response example:
+# HTTP/1.1 500 Internal Server Error
+# {"errors":["beacon node unreachable"]}
+```
+
+### Metrics Inspection
+
+```bash
+# Check specific metric
+curl -s http://localhost:15000/metrics | grep ssv_validator_validators_per_status
+
+# Export all metrics for analysis
+curl -s http://localhost:15000/metrics > metrics-snapshot.txt
+
+# Check metric value over time
+watch -n 5 'curl -s http://localhost:15000/metrics | grep ssv_runner_submissions'
+```
+
+### Log Analysis Tools
+
+```bash
+# Real-time log following (JSON)
+journalctl -u ssv-node -f | jq .
+
+# Filter errors from last hour
+journalctl -u ssv-node --since "1 hour ago" | jq 'select(.level == "ERROR")'
+
+# Create error summary
+journalctl -u ssv-node --since "24 hours ago" | 
+  jq -r 'select(.level == "ERROR") | .msg' | 
+  sort | uniq -c | sort -rn
+```
+
+### Database Inspection
+
+```bash
+# Count total keys
+curl -s http://localhost:15000/database/count-by-collection | jq '.count'
+
+# Count validator shares
+curl -s "http://localhost:15000/database/count-by-collection?prefix=shares" | jq '.count'
+
+# Database size
+du -sh ./data/db
+```
+
+## Getting Help
+
+### Information to Collect
+
+When seeking help, gather:
+
+1. **Node Information**:
+   ```bash
+   ./bin/ssvnode version
+   ```
+
+2. **Configuration** (sanitized - remove private keys):
+   ```bash
+   cat config.yaml | grep -v -i "private\|key\|password"
+   ```
+
+3. **Recent Logs**:
+   ```bash
+   journalctl -u ssv-node --since "1 hour ago" --no-pager > logs.txt
+   ```
+
+4. **Metrics Snapshot**:
+   ```bash
+   curl -s http://localhost:15000/metrics > metrics.txt
+   ```
+
+5. **System Info**:
+   ```bash
+   uname -a
+   free -h
+   df -h
+   ```
+
+### Support Channels
+
+<CardGroup cols={2}>
+  <Card title="Discord Community" icon="discord" href="https://discord.gg/5vT22pRBrf">
+    Join the SSV community for real-time support and discussions
+  </Card>
+  
+  <Card title="GitHub Issues" icon="github" href="https://github.com/ssvlabs/ssv/issues">
+    Report bugs and track known issues
+  </Card>
+  
+  <Card title="Documentation" icon="book" href="/introduction">
+    Review comprehensive documentation and guides
+  </Card>
+  
+  <Card title="API Reference" icon="code" href="/api/introduction">
+    Explore API endpoints for monitoring and management
+  </Card>
+</CardGroup>
+
+<Warning>
+**Never share**:
+- Operator private keys
+- Validator private keys or keystores
+- Complete configuration files (may contain sensitive data)
+- Production wallet addresses or seed phrases
+
+Always sanitize logs and configs before sharing publicly.
+</Warning>
+
+## Preventive Maintenance
+
+### Regular Checks
+
+- **Daily**: Review error logs and metrics dashboards
+- **Weekly**: Check disk space, database size, system updates
+- **Monthly**: Review performance trends, backup verification, security updates
+
+### Monitoring Best Practices
+
+1. Set up alerts for:
+   - Node health check failures
+   - High failed submission rates
+   - Validator status changes
+   - Resource exhaustion (disk, memory)
+
+2. Maintain backups:
+   - Database backups (before upgrades)
+   - Configuration backups
+   - Operator key backups (encrypted, secure storage)
+
+3. Keep software updated:
+   - Monitor SSV releases
+   - Test updates in testnet first
+   - Follow upgrade procedures carefully
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Metrics Setup" icon="chart-mixed" href="/monitoring/metrics">
+    Configure Prometheus and Grafana for comprehensive monitoring
+  </Card>
+  
+  <Card title="Logging Configuration" icon="file-lines" href="/monitoring/logging">
+    Optimize logging for better debugging and analysis
+  </Card>
+</CardGroup>

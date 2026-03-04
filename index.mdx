@@ -1,97 +1,227 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: SSV Node Documentation
+mode: custom
 ---
 
-## Setting up
+<div className="relative overflow-hidden bg-gradient-to-br from-[#0B0B3B] via-[#1a1a5e] to-[#0c0c54] dark:from-[#0B0B3B] dark:via-[#1a1a5e] dark:to-[#0c0c54]">
+  <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center opacity-20"></div>
+  <div className="relative py-20 px-4 sm:px-6 lg:px-8">
+    <div className="max-w-7xl mx-auto">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+        <div className="lg:col-span-7">
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-6">
+            Distributed Validator Technology for Ethereum
+          </h1>
+          <p className="text-lg sm:text-xl text-gray-300 max-w-2xl mb-8">
+            SSV Node is the infrastructure powering secure and scalable Ethereum staking through Secret Shared Validators. Run fault-tolerant validators with Byzantine consensus and MPC threshold schemes.
+          </p>
+          <div className="flex flex-wrap gap-4">
+            <a 
+              href="/getting-started/quick-start" 
+              className="inline-flex items-center px-6 py-3 rounded-lg font-semibold text-white bg-[#2cb4fc] hover:bg-[#1a9de0] transition-colors"
+            >
+              Get Started
+              <svg className="ml-2 w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+              </svg>
+            </a>
+            <a 
+              href="/introduction" 
+              className="inline-flex items-center px-6 py-3 rounded-lg font-semibold text-white border border-white/30 bg-white/10 hover:bg-white/20 transition-colors"
+            >
+              Read Documentation
+            </a>
+          </div>
+        </div>
+        <div className="lg:col-span-5 hidden lg:block">
+          <div className="relative">
+            <div className="absolute inset-0 bg-[#2cb4fc]/20 blur-3xl rounded-full"></div>
+            <img 
+              src="https://media.brand.dev/b17b50fc-ffab-4ebe-a1bc-b77edb72bcc4.png" 
+              alt="SSV Network" 
+              noZoom
+              className="relative w-full h-auto max-w-md mx-auto"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
-Get your documentation site up and running in minutes.
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="mb-12">
+    <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-3">Quick Start</h2>
+    <p className="text-base text-gray-600 dark:text-gray-400">Get your SSV node up and running in minutes</p>
+  </div>
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+  <Steps>
+    <Step title="Install Dependencies">
+      Install Go 1.24 or higher, Docker, and Make on your system.
+      
+      ```bash
+      go version  # Should be 1.24+
+      docker --version
+      make --version
+      ```
+    </Step>
+    
+    <Step title="Clone and Build">
+      Clone the repository and build the SSV node binary.
+      
+      ```bash
+      git clone https://github.com/ssvlabs/ssv.git
+      cd ssv
+      make build
+      ```
+      
+      The binary will be created at `./bin/ssvnode`.
+    </Step>
+    
+    <Step title="Generate Operator Keys">
+      Create your operator keys for network authentication.
+      
+      ```bash
+      ./bin/ssvnode generate-operator-keys --password-file=password.txt
+      ```
+      
+      <Note>Store your operator keys securely. They authenticate your node on the SSV network.</Note>
+    </Step>
+    
+    <Step title="Configure Your Node">
+      Create a configuration file with your beacon node endpoint and operator settings.
+      
+      ```yaml config.yaml
+      eth2:
+        BeaconNodeAddr: http://localhost:5052
+      
+      p2p:
+        Discovery: discv5
+        TcpPort: 13001
+        UdpPort: 12001
+      
+      OperatorPrivateKey: <your-operator-private-key>
+      ```
+      
+      See the [configuration guide](/getting-started/configuration) for all available options.
+    </Step>
+    
+    <Step title="Start Your Node">
+      Launch your SSV node and start validating.
+      
+      ```bash
+      ./bin/ssvnode start-node --config=./config.yaml
+      ```
+      
+      Your node will connect to the SSV network and begin processing validator duties.
+    </Step>
+  </Steps>
+</div>
 
-## Make it yours
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="mb-12">
+    <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-3">Core Features</h2>
+    <p className="text-base text-gray-600 dark:text-gray-400">What makes SSV Node powerful for distributed validation</p>
+  </div>
 
-Design a docs site that looks great and empowers your users.
+  <CardGroup cols={2}>
+    <Card title="Byzantine Fault Tolerance" icon="shield-halved" href="/concepts/consensus">
+      Istanbul BFT consensus ensures validator duties are performed correctly even when operators are offline or malicious.
+    </Card>
+    <Card title="Secret Sharing" icon="key" href="/concepts/secret-sharing">
+      Validator keys are split using Shamir Secret Sharing across multiple operators, eliminating single points of failure.
+    </Card>
+    <Card title="P2P Networking" icon="network-wired" href="/concepts/network-topology">
+      Libp2p-based networking with discv5 discovery creates resilient, decentralized operator communication.
+    </Card>
+    <Card title="Duty Execution" icon="list-check" href="/concepts/duties">
+      Automated handling of attestations, block proposals, and sync committee duties with slashing protection.
+    </Card>
+  </CardGroup>
+</div>
 
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
-  </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="mb-12">
+    <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white mb-3">Explore Documentation</h2>
+    <p className="text-base text-gray-600 dark:text-gray-400">Deep dive into SSV Node capabilities</p>
+  </div>
 
-## Create beautiful pages
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <a href="/operations/running-a-node" className="group block rounded-2xl border border-gray-200 dark:border-[#27272a] hover:border-[#2cb4fc] dark:hover:border-[#2cb4fc] overflow-hidden no-underline transition-colors">
+      <div className="p-6 bg-white dark:bg-[#1a1d27]">
+        <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-2">Node Operations</h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Learn how to run, manage, and monitor your SSV operator node in production environments.</p>
+        <div className="flex items-center text-sm font-medium text-[#2cb4fc] group-hover:text-[#1a9de0]">
+          Start Operating
+          <svg className="ml-1 w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
+      </div>
+    </a>
 
-Everything you need to create world-class documentation.
+    <a href="/deployment/docker" className="group block rounded-2xl border border-gray-200 dark:border-[#27272a] hover:border-[#2cb4fc] dark:hover:border-[#2cb4fc] overflow-hidden no-underline transition-colors">
+      <div className="p-6 bg-white dark:bg-[#1a1d27]">
+        <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-2">Deployment Guides</h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Deploy SSV nodes using Docker, Docker Compose, or in production with best practices and security hardening.</p>
+        <div className="flex items-center text-sm font-medium text-[#2cb4fc] group-hover:text-[#1a9de0]">
+          Deploy Now
+          <svg className="ml-1 w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
+      </div>
+    </a>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+    <a href="/api/introduction" className="group block rounded-2xl border border-gray-200 dark:border-[#27272a] hover:border-[#2cb4fc] dark:hover:border-[#2cb4fc] overflow-hidden no-underline transition-colors">
+      <div className="p-6 bg-white dark:bg-[#1a1d27]">
+        <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-2">API Reference</h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Complete HTTP API documentation for node health, identity, peer management, and validator operations.</p>
+        <div className="flex items-center text-sm font-medium text-[#2cb4fc] group-hover:text-[#1a9de0]">
+          View API
+          <svg className="ml-1 w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
+      </div>
+    </a>
 
-## Need inspiration?
+    <a href="/cli/overview" className="group block rounded-2xl border border-gray-200 dark:border-[#27272a] hover:border-[#2cb4fc] dark:hover:border-[#2cb4fc] overflow-hidden no-underline transition-colors">
+      <div className="p-6 bg-white dark:bg-[#1a1d27]">
+        <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-2">CLI Reference</h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">Command-line tools for key generation, threshold splitting, node management, and network operations.</p>
+        <div className="flex items-center text-sm font-medium text-[#2cb4fc] group-hover:text-[#1a9de0]">
+          Explore CLI
+          <svg className="ml-1 w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </div>
+      </div>
+    </a>
+  </div>
+</div>
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="rounded-2xl bg-gradient-to-r from-[#2cb4fc] to-[#0c0c54] p-8 sm:p-12">
+    <div className="text-center">
+      <h2 className="text-2xl sm:text-3xl font-bold text-white mb-4">Ready to Run a Distributed Validator?</h2>
+      <p className="text-lg text-white/90 mb-8 max-w-2xl mx-auto">
+        Join the SSV network and contribute to Ethereum's decentralization with fault-tolerant validator infrastructure.
+      </p>
+      <div className="flex flex-col sm:flex-row gap-4 justify-center">
+        <a 
+          href="/getting-started/installation" 
+          className="inline-flex items-center justify-center px-6 py-3 rounded-lg font-semibold text-[#0c0c54] bg-white hover:bg-gray-100 transition-colors"
+        >
+          Install SSV Node
+        </a>
+        <a 
+          href="https://discord.gg/5vT22pRBrf" 
+          className="inline-flex items-center justify-center px-6 py-3 rounded-lg font-semibold text-white border border-white/30 hover:bg-white/10 transition-colors"
+        >
+          Join Discord Community
+        </a>
+      </div>
+    </div>
+  </div>
+</div>

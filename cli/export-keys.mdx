@@ -1,0 +1,419 @@
+---
+title: 'export-keys'
+description: 'Extract validator private and public keys from mnemonic phrase'
+icon: 'file-export'
+---
+
+## Overview
+
+The `export-keys` command extracts Ethereum validator BLS keys from a mnemonic phrase using standard key derivation (EIP-2334). This is useful for testing and development purposes.
+
+<Warning>
+  This command is **FOR TESTING ONLY**. Never use this with mainnet mnemonics or in production environments. Exposing mnemonics can lead to complete loss of funds.
+</Warning>
+
+## Usage
+
+```bash
+ssvnode export-keys --mnemonic="<24-word-phrase>" --index=<key-index> [--network=<network>]
+```
+
+## Flags
+
+<ParamField path="--mnemonic" type="string" required>
+  24-word mnemonic phrase (seed phrase) from which to derive validator keys.
+  
+  Must be a valid BIP-39 mnemonic with 24 words separated by spaces.
+  
+  ```bash
+  ssvnode export-keys --mnemonic="word1 word2 ... word24" --index=0
+  ```
+</ParamField>
+
+<ParamField path="--index" type="int" default="0">
+  Index of the validator key to export from the mnemonic.
+  
+  Each mnemonic can generate multiple validator keys. Use different indices to export different keys.
+  
+  ```bash
+  # Export first key (index 0)
+  ssvnode export-keys --mnemonic="..." --index=0
+  
+  # Export second key (index 1)
+  ssvnode export-keys --mnemonic="..." --index=1
+  ```
+</ParamField>
+
+<ParamField path="--network" type="string" default="mainnet">
+  Ethereum network for key derivation path.
+  
+  Valid values:
+  - `mainnet` - Ethereum mainnet (default)
+  - `holesky` - Holesky testnet
+  - `goerli` - Goerli testnet (deprecated)
+  
+  ```bash
+  ssvnode export-keys --mnemonic="..." --index=0 --network=holesky
+  ```
+</ParamField>
+
+## How It Works
+
+### Key Derivation (EIP-2334)
+
+The command follows the Ethereum validator key derivation standard:
+
+1. **Mnemonic → Seed**: Convert 24-word phrase to master seed (BIP-39)
+2. **Derivation Path**: Use path `m/12381/3600/<index>/0/0` (EIP-2334)
+3. **BLS Key**: Generate BLS12-381 key pair at derived path
+
+### Derivation Path Format
+
+```
+m / 12381 / 3600 / <index> / 0 / 0
+│   │       │       │        │   │
+│   │       │       │        │   └─ Key index (always 0)
+│   │       │       │        └───── Withdrawal index (always 0)
+│   │       │       └────────────── Validator index (0, 1, 2, ...)
+│   │       └────────────────────── Purpose (3600 = eth2 withdrawal)
+│   └────────────────────────────── Coin type (12381 = BLS12-381)
+└────────────────────────────────── Master key
+```
+
+## Examples
+
+### Export First Validator Key
+
+```bash
+./bin/ssvnode export-keys \
+  --mnemonic="abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about" \
+  --index=0
+```
+
+### Output
+
+```
+Seed: 5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc19a5ac40b389cd370d086206dec8aa6c43daea6690f20ad3d8d48b2d2ce9e38e4
+Generating keys for index: 0
+Private Key: 2e0834786285daccd064ca17f1654f67b4aef298acbb82cef9ec422fb4975622
+Public Key: a9b14f6e8c7d3f2e1b5a8c6f9d2e4b7a3c8e5f1d9b6a2e7c4f8d1b5a3e9c6f2d8e
+```
+
+The output provides:
+- **Seed**: Master seed derived from mnemonic (hex)
+- **Private Key**: Validator BLS private key (hex)
+- **Public Key**: Validator BLS public key (hex)
+
+### Export Multiple Keys
+
+```bash
+# Export keys at indices 0-3
+for i in {0..3}; do
+  echo "\n=== Validator $i ==="
+  ./bin/ssvnode export-keys \
+    --mnemonic="your mnemonic phrase here..." \
+    --index=$i
+done
+```
+
+### Export for Testnet
+
+```bash
+./bin/ssvnode export-keys \
+  --mnemonic="test test test test test test test test test test test junk" \
+  --index=0 \
+  --network=holesky
+```
+
+## Using Exported Keys
+
+### With create-threshold Command
+
+Use the exported private key for local testing:
+
+```bash
+# Step 1: Export validator key
+./bin/ssvnode export-keys \
+  --mnemonic="your test mnemonic..." \
+  --index=0
+
+# Note the "Private Key" output
+# Private Key: 2e0834786285daccd064ca17f1654f67b4aef298acbb82cef9ec422fb4975622
+
+# Step 2: Create threshold shares for 4 operators
+./bin/ssvnode create-threshold \
+  --private-key=2e0834786285daccd064ca17f1654f67b4aef298acbb82cef9ec422fb4975622 \
+  --count=4
+```
+
+### Manual Key Conversion
+
+```bash
+# Export keys and save to file
+./bin/ssvnode export-keys \
+  --mnemonic="..." \
+  --index=0 > validator_keys.txt
+
+# Extract just the private key
+grep "Private Key:" validator_keys.txt | awk '{print $3}'
+
+# Use in threshold creation
+PRIV_KEY=$(grep "Private Key:" validator_keys.txt | awk '{print $3}')
+./bin/ssvnode create-threshold --private-key=$PRIV_KEY --count=4
+```
+
+## Security Warnings
+
+<Warning>
+  **CRITICAL: This command handles extremely sensitive data!**
+</Warning>
+
+### Never Use in Production
+
+<AccordionGroup>
+  <Accordion title="Why is this dangerous?">
+    - Mnemonics grant complete control over all derived accounts
+    - Command line arguments may be logged in shell history
+    - Terminal output may be logged by system tools
+    - Process memory could be dumped/inspected
+    - No encryption or secure memory handling
+  </Accordion>
+
+  <Accordion title="Production alternatives">
+    For production key management, use:
+    
+    - **Hardware wallets**: Ledger, Trezor, Lattice
+    - **eth2-deposit-cli**: Official Ethereum key generation tool
+    - **ssv-keys**: SSV-specific secure key splitting
+    - **Keystores**: Encrypted EIP-2335 keystore files
+    
+    ```bash
+    # Use eth2-deposit-cli for production
+    ./deposit new-mnemonic --num_validators=1 --chain=mainnet
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Protect Your Mnemonic
+
+```bash
+# ❌ NEVER - Mnemonic visible in command line
+./bin/ssvnode export-keys --mnemonic="abandon abandon ..." --index=0
+
+# ❌ NEVER - Mnemonic in environment variable
+export MNEMONIC="abandon abandon ..."
+./bin/ssvnode export-keys --mnemonic="$MNEMONIC" --index=0
+
+# ✅ BETTER - Read from secure file (still risky)
+echo "abandon abandon ..." > /tmp/mnemonic.txt
+chmod 600 /tmp/mnemonic.txt
+./bin/ssvnode export-keys --mnemonic="$(cat /tmp/mnemonic.txt)" --index=0
+shred -u /tmp/mnemonic.txt
+
+# ✅ BEST - Don't use this command for real funds!
+# Use hardware wallets or eth2-deposit-cli instead
+```
+
+### Clear Sensitive Data
+
+```bash
+# After running export-keys, clear shell history
+history -d $(history | tail -n 2 | head -n 1 | awk '{print $1}')
+
+# Or clear entire history
+history -c
+
+# Use a private shell session
+bash --norc --noprofile
+./bin/ssvnode export-keys --mnemonic="..." --index=0
+exit  # Session history not saved
+```
+
+## Testing Workflow
+
+Complete example for local development:
+
+### Setup
+
+```bash
+# Use the well-known test mnemonic (NEVER USE WITH REAL FUNDS)
+TEST_MNEMONIC="test test test test test test test test test test test junk"
+
+# Create secure directory
+mkdir -p ~/ssv-testing
+cd ~/ssv-testing
+chmod 700 .
+```
+
+### Export Keys
+
+```bash
+# Export first validator key
+./bin/ssvnode export-keys \
+  --mnemonic="$TEST_MNEMONIC" \
+  --index=0 \
+  --network=holesky > validator_0.txt
+
+# Extract private key
+VAL_PRIVKEY=$(grep "Private Key:" validator_0.txt | awk '{print $3}')
+echo "Validator Private Key: $VAL_PRIVKEY"
+```
+
+### Create Shares
+
+```bash
+# Generate threshold shares for 4 operators
+./bin/ssvnode create-threshold \
+  --private-key=$VAL_PRIVKEY \
+  --count=4 > shares.txt
+
+# Now use shares.txt to configure your local SSV cluster
+```
+
+### Cleanup
+
+```bash
+# Securely delete sensitive files
+shred -u validator_0.txt shares.txt
+unset TEST_MNEMONIC VAL_PRIVKEY
+```
+
+## Understanding the Output
+
+### Seed
+
+The master seed is derived from your mnemonic using BIP-39:
+
+```
+Seed: 5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc1...
+```
+
+- 64-byte (128 hex character) value
+- Used as input for key derivation
+- Same seed generates same keys (deterministic)
+
+### Private Key
+
+The validator's BLS12-381 private key:
+
+```
+Private Key: 2e0834786285daccd064ca17f1654f67b4aef298acbb82cef9ec422fb4975622
+```
+
+- 32-byte (64 hex character) scalar
+- Used to sign validator duties
+- **NEVER share this with anyone**
+
+### Public Key
+
+The validator's BLS12-381 public key:
+
+```
+Public Key: a9b14f6e8c7d3f2e1b5a8c6f9d2e4b7a3c8e5f1d9b6a2e7c4f8d1b5a3e9c6f2d8e
+```
+
+- 48-byte (96 hex character) point
+- Used to identify the validator
+- Safe to share publicly
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Failed to get seed from mnemonic">
+    ```
+    failed to get seed from mnemonic
+    ```
+    
+    **Cause**: Invalid mnemonic format or word count.
+    
+    **Solution**: 
+    - Ensure exactly 24 words (BIP-39 standard)
+    - Check for typos in words
+    - Verify words are from BIP-39 wordlist
+    - Use proper spacing between words
+    
+    ```bash
+    # Count words
+    echo "your mnemonic here" | wc -w
+    # Should output: 24
+    
+    # Test with known-valid mnemonic
+    ./bin/ssvnode export-keys \
+      --mnemonic="abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about" \
+      --index=0
+    ```
+  </Accordion>
+
+  <Accordion title="Failed to get private key from seed">
+    ```
+    failed to get private key from seed
+    ```
+    
+    **Cause**: Key derivation failed for specified network/index.
+    
+    **Solution**:
+    ```bash
+    # Try with default network
+    ./bin/ssvnode export-keys --mnemonic="..." --index=0
+    
+    # Try with explicit network
+    ./bin/ssvnode export-keys --mnemonic="..." --index=0 --network=mainnet
+    
+    # Try different index
+    ./bin/ssvnode export-keys --mnemonic="..." --index=1
+    ```
+  </Accordion>
+
+  <Accordion title="Invalid network flag">
+    ```
+    failed to get network flag value
+    ```
+    
+    **Solution**: Use valid network names:
+    ```bash
+    --network=mainnet  # ✓
+    --network=holesky  # ✓
+    --network=goerli   # ✓ (deprecated)
+    --network=testnet  # ✗ Invalid
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Mnemonic Standards
+
+### BIP-39 Word List
+
+Mnemonics must use words from the [BIP-39 English wordlist](https://github.com/bitcoin/bips/blob/master/bip-0039/english.txt):
+
+- Exactly 2048 words in the list
+- Each word uniquely identifiable by first 4 letters
+- Case-insensitive
+
+### Checksum Validation
+
+The last word contains a checksum:
+
+```bash
+# Valid mnemonic (checksum valid)
+./bin/ssvnode export-keys \
+  --mnemonic="abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+# Works ✓
+
+# Invalid checksum
+./bin/ssvnode export-keys \
+  --mnemonic="abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon"
+# Fails ✗ - checksum mismatch
+```
+
+## Related Commands
+
+- [create-threshold](/cli/create-threshold) - Split exported keys into shares
+- [generate-operator-keys](/cli/generate-operator-keys) - Generate operator keys
+- [start-node](/cli/start-node) - Run SSV node
+
+## See Also
+
+- [eth2-deposit-cli](https://github.com/ethereum/staking-deposit-cli) - Official validator key generation
+- [ssv-keys](https://github.com/ssvlabs/ssv-keys) - Production key splitting tool
+- [EIP-2334](https://eips.ethereum.org/EIPS/eip-2334) - BLS12-381 key derivation
+- [BIP-39](https://github.com/bitcoin/bips/blob/master/bip-0039.mediawiki) - Mnemonic code standard

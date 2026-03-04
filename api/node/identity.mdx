@@ -1,0 +1,118 @@
+---
+title: 'Node Identity'
+api: 'GET /v1/node/identity'
+description: 'Retrieve the identity and network information of the SSV node'
+---
+
+Returns the node's P2P identity, listen addresses, network metadata, and supported subnets.
+
+## Endpoint
+
+```
+GET /v1/node/identity
+```
+
+## Response
+
+<ResponseField name="peer_id" type="string" required>
+  The node's libp2p peer ID (base58-encoded)
+</ResponseField>
+
+<ResponseField name="addresses" type="array" required>
+  List of multiaddresses where the node is listening for P2P connections
+</ResponseField>
+
+<ResponseField name="subnets" type="string" required>
+  Hex-encoded bitmap of subscribed subnets (used for validator assignment isolation)
+</ResponseField>
+
+<ResponseField name="version" type="string" required>
+  SSV node version string
+</ResponseField>
+
+## Example Request
+
+```bash
+curl http://localhost:16000/v1/node/identity
+```
+
+## Example Response
+
+```json
+{
+  "peer_id": "16Uiu2HAm7jPZX4kB4FJPkqh7VqAjLbTy6WDQP2Qa3M8bJrX8F3PZ",
+  "addresses": [
+    "/ip4/192.168.1.100/tcp/13001/p2p/16Uiu2HAm7jPZX4kB4FJPkqh7VqAjLbTy6WDQP2Qa3M8bJrX8F3PZ",
+    "/ip4/192.168.1.100/udp/12001/quic/p2p/16Uiu2HAm7jPZX4kB4FJPkqh7VqAjLbTy6WDQP2Qa3M8bJrX8F3PZ"
+  ],
+  "subnets": "0x0000000000000000000000000000000f",
+  "version": "v1.3.0"
+}
+```
+
+## Field Details
+
+### Peer ID
+
+The `peer_id` is a unique identifier derived from the node's P2P private key. It's used for:
+
+- P2P network identification
+- Message routing and validation
+- Peer discovery and connection management
+
+### Addresses
+
+The `addresses` field contains multiaddresses (multiaddrs) in the format:
+
+```
+/ip4/<IP>/tcp/<PORT>/p2p/<PEER_ID>
+/ip4/<IP>/udp/<PORT>/quic/p2p/<PEER_ID>
+```
+
+These addresses tell other nodes how to connect to this node.
+
+### Subnets
+
+The `subnets` field is a hex-encoded bitmap indicating which validator subnets the node is subscribed to. SSV uses subnets to:
+
+- Isolate validator communication by public key hash
+- Reduce network bandwidth by filtering irrelevant messages
+- Enable efficient routing in large validator sets
+
+### Version
+
+The `version` string indicates the SSV node software version, useful for:
+
+- Compatibility checks
+- Debugging and support
+- Network upgrade coordination
+
+## Use Cases
+
+### Verify Node Connectivity
+
+Use this endpoint to:
+
+- Confirm the node is running and accessible
+- Retrieve connection information for sharing with other operators
+- Verify the node is on the expected version
+
+### Network Debugging
+
+When troubleshooting P2P connectivity:
+
+1. Check the peer ID matches expected value
+2. Verify listen addresses are correct
+3. Confirm subnets align with managed validators
+
+### Monitoring
+
+Incorporate this endpoint in monitoring systems to:
+
+- Track node version across infrastructure
+- Alert on unexpected peer ID changes (indicates key rotation)
+- Monitor subnet subscriptions
+
+## Source Code Reference
+
+Implementation: `/home/daytona/workspace/source/api/handlers/node/node.go:49`

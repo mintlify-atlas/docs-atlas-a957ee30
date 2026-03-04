@@ -1,0 +1,368 @@
+---
+title: 'Committee Traces'
+api: 'GET/POST /v1/exporter/traces/committee'
+description: 'Retrieve committee-level duty traces and consensus data'
+---
+
+<Warning>
+This endpoint requires running the node with the `--exporter` flag enabled.
+</Warning>
+
+Returns consensus and post-consensus traces aggregated at the committee level, useful for analyzing multi-validator committee performance and coordination.
+
+## Endpoint
+
+```
+GET /v1/exporter/traces/committee
+POST /v1/exporter/traces/committee
+```
+
+## Request Parameters
+
+<ParamField query="from" type="integer" required>
+  Starting slot (inclusive)
+</ParamField>
+
+<ParamField query="to" type="integer" required>
+  Ending slot (inclusive)
+</ParamField>
+
+<ParamField query="committeeIDs" type="array">
+  Comma-separated list of committee IDs (hex, 64 characters each)
+  
+  Example: `committeeIDs=0x1234...5678,0xabcd...ef01`
+</ParamField>
+
+## Response
+
+<ResponseField name="data" type="array" required>
+  Array of committee trace objects
+  
+  <Expandable title="committee trace object">
+    <ResponseField name="slot" type="integer">
+      Duty slot for this committee trace
+    </ResponseField>
+    
+    <ResponseField name="committeeID" type="string">
+      32-byte committee identifier (hex)
+    </ResponseField>
+    
+    <ResponseField name="consensus" type="array">
+      Per-round QBFT messages (same structure as validator traces)
+    </ResponseField>
+    
+    <ResponseField name="decideds" type="array">
+      Decided messages for this committee
+    </ResponseField>
+    
+    <ResponseField name="sync_committee" type="array">
+      Post-consensus sync committee messages
+      
+      <Expandable title="committee message">
+        <ResponseField name="signer" type="integer">Operator ID</ResponseField>
+        <ResponseField name="validatorIdx" type="array">Related validator indices</ResponseField>
+        <ResponseField name="time" type="string">Timestamp (ISO 8601)</ResponseField>
+      </Expandable>
+    </ResponseField>
+    
+    <ResponseField name="attester" type="array">
+      Post-consensus attester messages (same structure as sync_committee)
+    </ResponseField>
+    
+    <ResponseField name="proposalData" type="string">
+      Hex-encoded proposal payload (if applicable)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="schedule" type="array">
+  Committee-level scheduled duties
+  
+  <Expandable title="schedule entry">
+    <ResponseField name="slot" type="integer">Slot number</ResponseField>
+    <ResponseField name="committeeID" type="string">Committee identifier (hex)</ResponseField>
+    <ResponseField name="roles" type="object">Map of role names to validator indices</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="errors" type="array">
+  Non-fatal errors encountered
+</ResponseField>
+
+## Example Request
+
+```bash
+curl -X POST http://localhost:16000/v1/exporter/traces/committee \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": 123456,
+    "to": 123460,
+    "committeeIDs": ["0xa1b2c3d4e5f6..."]
+  }'
+```
+
+## Example Response
+
+```json
+{
+  "data": [
+    {
+      "slot": 123456,
+      "committeeID": "a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890",
+      "consensus": [
+        {
+          "proposal": {
+            "round": 1,
+            "ssvRoot": "0x1234567890abcdef...",
+            "leader": 1,
+            "roundChangeJustifications": [],
+            "prepareJustifications": [],
+            "time": "2024-03-04T12:34:56.789Z"
+          },
+          "prepares": [
+            {
+              "round": 1,
+              "ssvRoot": "0x1234567890abcdef...",
+              "signer": 1,
+              "time": "2024-03-04T12:34:56.890Z"
+            },
+            {
+              "round": 1,
+              "ssvRoot": "0x1234567890abcdef...",
+              "signer": 2,
+              "time": "2024-03-04T12:34:56.891Z"
+            },
+            {
+              "round": 1,
+              "ssvRoot": "0x1234567890abcdef...",
+              "signer": 3,
+              "time": "2024-03-04T12:34:56.892Z"
+            }
+          ],
+          "commits": [
+            {
+              "round": 1,
+              "ssvRoot": "0x1234567890abcdef...",
+              "signer": 1,
+              "time": "2024-03-04T12:34:57.100Z"
+            },
+            {
+              "round": 1,
+              "ssvRoot": "0x1234567890abcdef...",
+              "signer": 2,
+              "time": "2024-03-04T12:34:57.101Z"
+            },
+            {
+              "round": 1,
+              "ssvRoot": "0x1234567890abcdef...",
+              "signer": 3,
+              "time": "2024-03-04T12:34:57.102Z"
+            }
+          ],
+          "roundChanges": []
+        }
+      ],
+      "decideds": [
+        {
+          "round": 1,
+          "ssvRoot": "0x1234567890abcdef...",
+          "signers": [1, 2, 3, 4],
+          "time": "2024-03-04T12:34:57.500Z"
+        }
+      ],
+      "sync_committee": [],
+      "attester": [
+        {
+          "signer": 1,
+          "validatorIdx": [42, 43],
+          "time": "2024-03-04T12:34:58.000Z"
+        },
+        {
+          "signer": 2,
+          "validatorIdx": [42, 43],
+          "time": "2024-03-04T12:34:58.001Z"
+        }
+      ],
+      "proposalData": ""
+    }
+  ],
+  "schedule": [
+    {
+      "slot": 123456,
+      "committeeID": "a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890a1b2c3d4e5f67890",
+      "roles": {
+        "ATTESTER": [42, 43],
+        "AGGREGATOR": [42]
+      }
+    }
+  ],
+  "errors": []
+}
+```
+
+## Committee ID Format
+
+Committee IDs are 32-byte (64 hex characters) identifiers derived from the validator public key hash. They group validators managed by the same operator set.
+
+### Finding Committee IDs
+
+You can find committee IDs from:
+
+1. **Validator traces**: The `committeeID` field in validator trace responses
+2. **Logs**: Check SSV node logs for committee assignments
+3. **Contract events**: Parse `ValidatorAdded` events from the SSV contract
+
+```bash
+# Get committee ID for a validator
+curl -X POST http://localhost:16000/v1/exporter/traces/validator \
+  -H "Content-Type: application/json" \
+  -d '{"from": 123456, "to": 123456, "roles": ["ATTESTER"], "indices": [42]}' \
+  | jq -r '.data[0].committeeID'
+```
+
+## Use Cases
+
+### Monitor Committee Health
+
+```bash
+# Check consensus rounds for a committee
+curl -X POST http://localhost:16000/v1/exporter/traces/committee \
+  -H "Content-Type: application/json" \
+  -d '{"from": 123400, "to": 123500, "committeeIDs": ["0xa1b2..."]}' \
+  | jq '.data[] | {slot, rounds: (.consensus | length)}'
+```
+
+### Analyze Multi-Validator Performance
+
+```bash
+# Check which validators in a committee had duties
+curl -X POST http://localhost:16000/v1/exporter/traces/committee \
+  -H "Content-Type: application/json" \
+  -d '{"from": 123456, "to": 123456, "committeeIDs": ["0xa1b2..."]}' \
+  | jq '.schedule[0].roles'
+```
+
+### Track Post-Consensus Messages
+
+```bash
+# See which operators submitted attester messages
+curl -X POST http://localhost:16000/v1/exporter/traces/committee \
+  -H "Content-Type: application/json" \
+  -d '{"from": 123456, "to": 123456, "committeeIDs": ["0xa1b2..."]}' \
+  | jq '.data[0].attester[] | {signer, validators: .validatorIdx}'
+```
+
+### Compare Committee Performance
+
+```bash
+# Compare consensus efficiency across committees
+curl -X POST http://localhost:16000/v1/exporter/traces/committee \
+  -H "Content-Type: application/json" \
+  -d '{"from": 123400, "to": 123500, "committeeIDs": ["0xa1b2...", "0xc3d4..."]}' \
+  | jq 'group_by(.data[].committeeID) | map({committee: .[0].committeeID, avgRounds: (map(.consensus | length) | add / length)})'
+```
+
+## Committee vs Validator Traces
+
+| Aspect | Validator Traces | Committee Traces |
+|--------|------------------|------------------|
+| **Scope** | Single validator | All validators in committee |
+| **Consensus** | Per-validator duty | Shared consensus for committee |
+| **Messages** | Pre/post per validator | Aggregated post-consensus |
+| **Use case** | Debug specific validator | Analyze operator coordination |
+| **Data size** | Smaller | Larger (multiple validators) |
+
+### When to Use Committee Traces
+
+- Analyzing operator set performance
+- Tracking multiple validators managed together
+- Investigating committee-wide consensus issues
+- Monitoring sync committee or aggregator duties
+
+### When to Use Validator Traces
+
+- Debugging a specific validator's duties
+- Detailed pre-consensus signature analysis
+- Single validator performance metrics
+
+## Schedule Field
+
+The `schedule` array shows which roles were assigned to the committee:
+
+```json
+{
+  "schedule": [
+    {
+      "slot": 123456,
+      "committeeID": "a1b2c3d4...",
+      "roles": {
+        "ATTESTER": [42, 43, 44],
+        "SYNC_COMMITTEE": [42],
+        "AGGREGATOR": [43]
+      }
+    }
+  ]
+}
+```
+
+This shows:
+
+- Validators 42, 43, 44 had ATTESTER duties
+- Validator 42 had SYNC_COMMITTEE duty
+- Validator 43 was an aggregator
+
+## Error Handling
+
+### Invalid Committee ID (400)
+
+```json
+{
+  "status": "Bad Request",
+  "error": "invalid committee ID length: abc123"
+}
+```
+
+Committee IDs must be exactly 64 hex characters (32 bytes).
+
+### Missing Exporter (404 or limited data)
+
+If `--exporter` is not enabled, this endpoint may not be available.
+
+### Partial Data (200 with errors)
+
+```json
+{
+  "data": [...],
+  "errors": [
+    "committee duty missing for slot 123457"
+  ]
+}
+```
+
+## Performance Considerations
+
+### Query Scope
+
+Committee traces can be large. Best practices:
+
+- Query ≤ 100 slots per request
+- Filter by specific committee IDs when possible
+- Avoid querying all committees simultaneously
+
+### Storage Requirements
+
+Committee traces aggregate data from multiple validators:
+
+- ~5-20 MB per committee per slot (depends on validator count)
+- Configure retention policies appropriately
+
+## Related Endpoints
+
+- [Validator Traces](/api/exporter/validator) - Per-validator detailed traces
+- [Decided Duties](/api/exporter/decided) - Lightweight decided information
+
+## Source Code Reference
+
+Implementation: `/home/daytona/workspace/source/api/handlers/exporter/committee_http.go:25`
+
+Model: `/home/daytona/workspace/source/api/handlers/exporter/committee_model.go:18`

@@ -1,0 +1,325 @@
+---
+title: Quick Start
+description: Get your SSV Node up and running in minutes
+---
+
+This guide will help you quickly set up and run an SSV Node. For detailed configuration options, see the [Configuration Reference](/getting-started/configuration).
+
+## Before You Begin
+
+Ensure you have:
+- Completed the [installation](/getting-started/installation)
+- Access to an Ethereum Beacon node
+- Access to an Ethereum Execution node (ETH1)
+
+## Quick Setup
+
+<Steps>
+  <Step title="Generate operator keys">
+    First, generate your operator private key. This uniquely identifies your operator node.
+
+    <CodeGroup>
+      ```bash Raw Format (Development Only)
+      ./bin/ssvnode generate-operator-keys
+      ```
+
+      ```bash Encrypted Format (Recommended)
+      # Create a password file
+      echo "your-secure-password" > password.txt
+      
+      # Generate encrypted keystore
+      ./bin/ssvnode generate-operator-keys --password-file=password.txt
+      ```
+    </CodeGroup>
+
+    <Warning>
+    **Production Use**: Always use the encrypted format with `--password-file` for production. The raw format can expose sensitive data.
+    </Warning>
+
+    The command will generate:
+    - `encrypted_private_key.json` (keystore file)
+    - Operator public key (displayed in terminal)
+  </Step>
+
+  <Step title="Create configuration file">
+    Copy the example configuration and customize it:
+
+    ```bash
+    cp config/config.example.yaml config/config.yaml
+    ```
+
+    Edit `config/config.yaml` with your settings:
+
+    ```yaml
+    global:
+      LogLevel: info
+      LogFilePath: ./data/debug.log
+
+    db:
+      Path: ./data/db
+
+    ssv:
+      Network: mainnet  # or holesky for testnet
+
+    eth2:
+      BeaconNodeAddr: http://your-beacon-node:5052
+
+    eth1:
+      ETH1Addr: ws://your-eth1-node:8546/ws
+
+    # Add your operator private key (Option 1: Encrypted keystore)
+    KeyStore:
+      PrivateKeyFile: ./encrypted_private_key.json
+      PasswordFile: ./password.txt
+
+    # Enable metrics
+    MetricsAPIPort: 15000
+    ```
+  </Step>
+
+  <Step title="Start your node">
+    Run the SSV Node:
+
+    <CodeGroup>
+      ```bash Binary
+      ./bin/ssvnode start-node --config ./config/config.yaml
+      ```
+
+      ```bash Docker
+      docker run -d \
+        --name ssv-node \
+        --restart unless-stopped \
+        -p 13000:13000 -p 12000:12000/udp \
+        -v $(pwd)/config:/config \
+        -v $(pwd)/data:/data \
+        ssvlabs/ssv-node:latest \
+        make BUILD_PATH=/go/bin/ssvnode start-node
+      ```
+
+      ```bash Docker Compose
+      docker-compose up -d ssv-node
+      ```
+    </CodeGroup>
+
+    Your node will start syncing with the network!
+  </Step>
+
+  <Step title="Verify node is running">
+    Check node logs to confirm it's running correctly:
+
+    <CodeGroup>
+      ```bash Binary
+      # Logs are written to ./data/debug.log
+      tail -f ./data/debug.log
+      ```
+
+      ```bash Docker
+      docker logs -f ssv-node
+      ```
+    </CodeGroup>
+
+    You should see log entries indicating:
+    - Connection to beacon node
+    - Connection to execution node
+    - P2P network discovery
+    - Event synchronization
+  </Step>
+</Steps>
+
+## Network Ports
+
+Ensure the following ports are accessible:
+
+| Port | Protocol | Purpose | Required |
+|------|----------|---------|----------|
+| 13000 | TCP | P2P communication | Yes |
+| 12000 | UDP | P2P discovery | Yes |
+| 15000 | TCP | Metrics API | Optional |
+| 16000 | TCP | SSV API | Optional |
+
+<Note>
+Configure your firewall to allow incoming connections on TCP 13000 and UDP 12000.
+</Note>
+
+## Monitoring Your Node
+
+<Tabs>
+  <Tab title="Metrics">
+    The metrics API provides Prometheus-compatible metrics at `http://localhost:15000/metrics`
+
+    View metrics with:
+    ```bash
+    curl http://localhost:15000/metrics
+    ```
+
+    Key metrics to monitor:
+    - `ssv_validator_status` - Validator status
+    - `ssv_beacon_status` - Beacon node connectivity
+    - `ssv_p2p_peers` - Connected peers
+  </Tab>
+
+  <Tab title="Logs">
+    Monitor logs for important events:
+
+    ```bash
+    # Follow logs in real-time
+    tail -f ./data/debug.log | grep -E "ERROR|WARN|validator"
+    ```
+
+    Log levels (set via `LogLevel` in config):
+    - `debug` - Detailed debugging information
+    - `info` - General informational messages
+    - `warn` - Warning messages
+    - `error` - Error messages requiring attention
+  </Tab>
+
+  <Tab title="API">
+    If you enabled the SSV API (port 16000), query node status:
+
+    ```bash
+    curl http://localhost:16000/health
+    ```
+
+    <Warning>
+    Keep the API port private to prevent resource-intensive attacks. Use a firewall or bind to localhost only.
+    </Warning>
+  </Tab>
+</Tabs>
+
+## Register Your Operator
+
+After your node is running, register it on the SSV Network:
+
+<Steps>
+  <Step title="Visit SSV Network Web App">
+    Go to [app.ssv.network](https://app.ssv.network) and connect your wallet.
+  </Step>
+
+  <Step title="Register as operator">
+    Navigate to "Join as Operator" and submit your operator public key generated in Step 1.
+  </Step>
+
+  <Step title="Set operator fee">
+    Configure your annual operator fee (in SSV tokens).
+  </Step>
+</Steps>
+
+## Running a Local Test Network
+
+For development and testing, run a local 4-node network:
+
+<Steps>
+  <Step title="Prepare local configuration">
+    ```bash
+    # Generate configuration for 4 local operators
+    ./scripts/generate_local_config.sh 4 \
+      ./keystore.json \
+      "keystore-password" \
+      0x1234567890123456789012345678901234567890 \
+      0
+    ```
+  </Step>
+
+  <Step title="Move config files">
+    ```bash
+    mv share*.yaml events.yaml ./config/
+    ```
+  </Step>
+
+  <Step title="Update config for local network">
+    Add to `config/config.yaml`:
+    ```yaml
+    LocalEventsPath: ./config/events.yaml
+    p2p:
+      Discovery: mdns
+    ```
+  </Step>
+
+  <Step title="Start local network">
+    ```bash
+    make docker-all
+    ```
+
+    This starts 4 SSV nodes that communicate via mDNS discovery.
+  </Step>
+</Steps>
+
+## Common Commands
+
+Useful commands for managing your node:
+
+| Command | Description |
+|---------|-------------|
+| `./bin/ssvnode version` | Display version information |
+| `./bin/ssvnode start-node --config <path>` | Start the node |
+| `./bin/ssvnode generate-operator-keys` | Generate operator keys |
+| `make docker-all` | Run local 4-node network |
+| `make docker-debug` | Run local network with debugging |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration Reference" icon="gear" href="/getting-started/configuration">
+    Explore all configuration options
+  </Card>
+  
+  <Card title="Operator Guide" icon="server" href="/operators/operator-node">
+    Learn about operator responsibilities
+  </Card>
+  
+  <Card title="Key Management" icon="key" href="/operators/key-management">
+    Secure your operator keys
+  </Card>
+  
+  <Card title="Monitoring" icon="chart-line" href="/operators/monitoring">
+    Set up comprehensive monitoring
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Node fails to connect to beacon node">
+    Verify your beacon node is running and accessible:
+    ```bash
+    curl http://your-beacon-node:5052/eth/v1/node/health
+    ```
+    
+    Check that the `BeaconNodeAddr` in your config is correct.
+  </Accordion>
+
+  <Accordion title="No peers connecting">
+    Ensure ports 13000 (TCP) and 12000 (UDP) are open in your firewall:
+    ```bash
+    # Check if ports are listening
+    netstat -tulpn | grep -E '12000|13000'
+    ```
+    
+    Verify your `HostAddress` is set correctly if behind NAT.
+  </Accordion>
+
+  <Accordion title="Keystore password error">
+    Ensure your password file contains the correct password without extra whitespace:
+    ```bash
+    cat password.txt | tr -d '\n\r' > password_clean.txt
+    mv password_clean.txt password.txt
+    ```
+  </Accordion>
+
+  <Accordion title="Database corruption">
+    If the database is corrupted, you may need to resync:
+    ```bash
+    # Backup and remove database
+    mv ./data/db ./data/db.backup
+    
+    # Restart node to resync
+    ./bin/ssvnode start-node --config ./config/config.yaml
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Additional Resources
+
+- [SSV API Documentation](https://ssvlabs.github.io/ssv/)
+- [Developer Guide](https://github.com/ssvlabs/ssv/blob/main/docs/DEV_GUIDE.md)
+- [Discord Community](https://discord.gg/5vT22pRBrf)

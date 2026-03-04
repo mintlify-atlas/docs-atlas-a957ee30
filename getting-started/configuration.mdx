@@ -1,0 +1,607 @@
+---
+title: Configuration
+description: Complete reference for SSV Node configuration options
+---
+
+This guide covers all configuration options for the SSV Node. Configuration is done via a YAML file, typically located at `config/config.yaml`.
+
+## Configuration File Location
+
+The default configuration file location is specified when starting the node:
+
+```bash
+./bin/ssvnode start-node --config ./config/config.yaml
+```
+
+You can use the example configuration as a starting point:
+```bash
+cp config/config.example.yaml config/config.yaml
+```
+
+## Complete Configuration Reference
+
+### Global Settings
+
+General settings that affect the entire node operation.
+
+```yaml
+global:
+  # Console log level: debug, info, warn, error, fatal, panic
+  LogLevel: info
+  
+  # Path to persistent debug log file
+  LogFilePath: ./data/debug.log
+```
+
+<ParamField path="global.LogLevel" type="string" default="info">
+  Log verbosity level. Options:
+  - `debug` - Detailed debugging information (verbose)
+  - `info` - General informational messages (recommended)
+  - `warn` - Warning messages only
+  - `error` - Error messages only
+  - `fatal` - Fatal errors that cause shutdown
+  - `panic` - Panic-level errors
+</ParamField>
+
+<ParamField path="global.LogFilePath" type="string" default="./data/debug.log">
+  File path where debug logs are written. Logs are appended to this file.
+</ParamField>
+
+---
+
+### Database Configuration
+
+Settings for the node's persistent storage.
+
+```yaml
+db:
+  # Path to persistent database directory
+  Path: ./data/db
+```
+
+<ParamField path="db.Path" type="string" required>
+  Directory path for storing the BadgerDB database. This contains:
+  - Validator shares and metadata
+  - Operator information
+  - Network state
+  
+  Ensure this directory has sufficient disk space and is backed up regularly.
+</ParamField>
+
+<Note>
+The database uses [BadgerDB](https://github.com/dgraph-io/badger) for efficient key-value storage with SSZ encoding.
+</Note>
+
+---
+
+### SSV Network
+
+Configure which SSV network to join.
+
+```yaml
+ssv:
+  # Network to join: mainnet or holesky
+  Network: mainnet
+```
+
+<ParamField path="ssv.Network" type="string" default="mainnet">
+  The SSV network to connect to:
+  - `mainnet` - Production network on Ethereum mainnet
+  - `holesky` - Testnet network on Holesky testnet
+</ParamField>
+
+---
+
+### Ethereum Beacon Node (ETH2)
+
+Configuration for connecting to the Ethereum consensus layer.
+
+```yaml
+eth2:
+  # HTTP(S) URL of Beacon node
+  BeaconNodeAddr: http://your-beacon-node.example:5052
+
+  ValidatorOptions:
+    # Additional validator options (optional)
+```
+
+<ParamField path="eth2.BeaconNodeAddr" type="string" required>
+  HTTP or HTTPS URL of your Ethereum Beacon node. The node uses this to:
+  - Fetch validator duties
+  - Submit attestations and proposals
+  - Monitor chain state
+  
+  Supports multiple beacon nodes for redundancy (comma-separated):
+  ```yaml
+  BeaconNodeAddr: http://beacon1:5052,http://beacon2:5052
+  ```
+</ParamField>
+
+<ParamField path="eth2.ValidatorOptions" type="object">
+  Advanced validator configuration options. See beacon client documentation for available options.
+</ParamField>
+
+<Warning>
+Ensure your beacon node is fully synced before starting the SSV node. An unsynced beacon node will cause duty failures.
+</Warning>
+
+---
+
+### Ethereum Execution Node (ETH1)
+
+Configuration for connecting to the Ethereum execution layer.
+
+```yaml
+eth1:
+  # WebSocket URL of Ethereum execution node
+  ETH1Addr: ws://your-eth1-node.example:8546/ws
+```
+
+<ParamField path="eth1.ETH1Addr" type="string" required>
+  WebSocket URL of your Ethereum execution node. Used to:
+  - Monitor SSV smart contract events
+  - Sync operator and validator registrations
+  - Track network state changes
+  
+  Must use WebSocket protocol (`ws://` or `wss://`) for event subscriptions.
+</ParamField>
+
+<Tip>
+Use a reliable execution node provider or run your own node for maximum reliability. Archive nodes are not required.
+</Tip>
+
+---
+
+### P2P Network Configuration
+
+Peer-to-peer networking settings.
+
+```yaml
+p2p:
+  # External IP address (auto-detected if not specified)
+  # HostAddress: 192.168.1.1
+  
+  # Override default ports
+  # TcpPort: 13001
+  # UdpPort: 12001
+  
+  # Discovery method (for local development)
+  # Discovery: mdns
+```
+
+<ParamField path="p2p.HostAddress" type="string">
+  External IP address of your node. 
+  - Auto-detected if not specified
+  - Must be set manually if behind NAT or using non-standard networking
+  - Required for proper peer discovery
+</ParamField>
+
+<ParamField path="p2p.TcpPort" type="number" default="13001">
+  TCP port for P2P communication. Must be publicly accessible for incoming connections.
+</ParamField>
+
+<ParamField path="p2p.UdpPort" type="number" default="12001">
+  UDP port for P2P discovery (discv5 protocol). Must be publicly accessible for peer discovery.
+</ParamField>
+
+<ParamField path="p2p.Discovery" type="string">
+  Discovery mechanism. Options:
+  - Not set (default) - Uses discv5 for production
+  - `mdns` - Multicast DNS for local development networks
+</ParamField>
+
+<Warning>
+**Firewall Configuration Required**
+
+Ensure both TCP and UDP ports are open in your firewall:
+```bash
+# Example for ufw
+sudo ufw allow 13001/tcp
+sudo ufw allow 12001/udp
+```
+</Warning>
+
+---
+
+### Operator Keys
+
+Configure your operator's private key. **Choose one method only.**
+
+<Tabs>
+  <Tab title="Encrypted Keystore (Recommended)">
+    ```yaml
+    KeyStore:
+      PrivateKeyFile: /path/to/encrypted_private_key.json
+      PasswordFile: /path/to/password.txt
+    ```
+
+    Generate encrypted keystore:
+    ```bash
+    ./bin/ssvnode generate-operator-keys --password-file=password.txt
+    ```
+
+    <ParamField path="KeyStore.PrivateKeyFile" type="string">
+      Path to encrypted keystore JSON file
+    </ParamField>
+
+    <ParamField path="KeyStore.PasswordFile" type="string">
+      Path to file containing keystore password
+    </ParamField>
+
+    <Check>
+    **Recommended for Production** - Provides encryption at rest with password protection.
+    </Check>
+  </Tab>
+
+  <Tab title="Raw Private Key (Not Recommended)">
+    ```yaml
+    OperatorPrivateKey: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFb3dJQkFBS0NBUUVB...
+    ```
+
+    Generate raw key:
+    ```bash
+    ./bin/ssvnode generate-operator-keys
+    ```
+
+    <ParamField path="OperatorPrivateKey" type="string">
+      Base64-encoded RSA private key
+    </ParamField>
+
+    <Warning>
+    **Not Recommended for Production** - This method only encodes the key, it doesn't encrypt it. Use encrypted keystore instead.
+    </Warning>
+  </Tab>
+</Tabs>
+
+### Converting Existing Keys
+
+Convert a raw private key to encrypted keystore:
+
+```bash
+./bin/ssvnode generate-operator-keys \
+  --password-file=password.txt \
+  --operator-key-file=existing_key.txt
+```
+
+---
+
+### MEV Configuration (Optional)
+
+Advanced settings for MEV (Maximal Extractable Value) optimization.
+
+```yaml
+# Duration to wait before requesting block proposal
+# Allows extracting higher MEV by waiting for better bids
+# ProposerDelay: 300ms
+
+# Safety flag for delays > 1s (dangerous!)
+# AllowDangerousProposerDelay: false
+```
+
+<ParamField path="ProposerDelay" type="duration" default="0">
+  Time delay before requesting block proposals. This allows MEV relays more time to build higher-value blocks.
+  
+  - Default: `0` (no delay)
+  - Recommended starting value: `300ms`
+  - Maximum safe value: `1000ms` (1 second)
+  
+  See `docs/MEV_CONSIDERATIONS.md` in the source repository for detailed information.
+</ParamField>
+
+<ParamField path="AllowDangerousProposerDelay" type="boolean" default="false">
+  Safety flag that must be set to `true` to allow `ProposerDelay` values above 1 second.
+</ParamField>
+
+<Warning>
+**Proposer Delay Risks**
+
+Values above 1 second significantly increase the risk of missing block proposals! Only increase this value if you:
+- Fully understand the MEV documentation
+- Accept the risk of missed proposals
+- Have monitored lower delays successfully
+</Warning>
+
+---
+
+### Monitoring & Metrics
+
+Enable monitoring interfaces for observability.
+
+```yaml
+# Prometheus metrics endpoint
+MetricsAPIPort: 15000
+
+# Enable OpenTelemetry traces
+EnableTraces: false
+
+# SSV API endpoint (keep private!)
+# SSVAPIPort: 16000
+```
+
+<ParamField path="MetricsAPIPort" type="number" default="15000">
+  Port for Prometheus-compatible metrics endpoint.
+  
+  Access metrics at: `http://localhost:15000/metrics`
+  
+  Provides metrics for:
+  - Validator performance
+  - P2P connectivity
+  - Beacon node status
+  - Consensus participation
+</ParamField>
+
+<ParamField path="EnableTraces" type="boolean" default="false">
+  Enable OpenTelemetry distributed tracing for debugging.
+</ParamField>
+
+<ParamField path="SSVAPIPort" type="number">
+  Port for SSV REST API. Documentation at [ssvlabs.github.io/ssv](https://ssvlabs.github.io/ssv/)
+</ParamField>
+
+<Warning>
+**Keep API Private** - The SSV API should not be publicly exposed as it can be resource-intensive. Bind to localhost or use firewall rules.
+</Warning>
+
+---
+
+### Local Development
+
+Settings for running local development networks.
+
+```yaml
+# Path to local events file (for testing)
+# LocalEventsPath: ./config/events.yaml
+```
+
+<ParamField path="LocalEventsPath" type="string">
+  Path to events YAML file for simulating contract events in local development.
+  
+  Use with local 4-node networks to simulate validator registration without actual blockchain events.
+</ParamField>
+
+<Accordion title="Local Development Setup">
+  For local testing with multiple nodes:
+
+  ```yaml
+  LocalEventsPath: ./config/events.yaml
+  p2p:
+    Discovery: mdns
+  ```
+
+  Generate local configuration:
+  ```bash
+  ./scripts/generate_local_config.sh 4 \
+    ./keystore.json \
+    "password" \
+    0x1234567890123456789012345678901234567890 \
+    0
+  ```
+
+  Then run:
+  ```bash
+  make docker-all
+  ```
+</Accordion>
+
+---
+
+## Example Configurations
+
+<CodeGroup>
+```yaml Mainnet Production
+global:
+  LogLevel: info
+  LogFilePath: /var/log/ssv/debug.log
+
+db:
+  Path: /var/lib/ssv/db
+
+ssv:
+  Network: mainnet
+
+eth2:
+  BeaconNodeAddr: http://localhost:5052
+
+eth1:
+  ETH1Addr: ws://localhost:8546/ws
+
+p2p:
+  HostAddress: 203.0.113.10
+  TcpPort: 13001
+  UdpPort: 12001
+
+KeyStore:
+  PrivateKeyFile: /etc/ssv/encrypted_private_key.json
+  PasswordFile: /etc/ssv/password.txt
+
+MetricsAPIPort: 15000
+```
+
+```yaml Holesky Testnet
+global:
+  LogLevel: debug
+  LogFilePath: ./data/debug.log
+
+db:
+  Path: ./data/db
+
+ssv:
+  Network: holesky
+
+eth2:
+  BeaconNodeAddr: http://holesky-beacon:5052
+
+eth1:
+  ETH1Addr: ws://holesky-execution:8546/ws
+
+KeyStore:
+  PrivateKeyFile: ./encrypted_private_key.json
+  PasswordFile: ./password.txt
+
+MetricsAPIPort: 15000
+SSVAPIPort: 16000
+EnableTraces: true
+```
+
+```yaml Local Development
+global:
+  LogLevel: debug
+  LogFilePath: ./data/debug.log
+
+db:
+  Path: ./data/db
+
+ssv:
+  Network: mainnet
+
+eth2:
+  BeaconNodeAddr: http://localhost:5052
+
+eth1:
+  ETH1Addr: ws://localhost:8546/ws
+
+p2p:
+  Discovery: mdns
+
+LocalEventsPath: ./config/events.yaml
+
+KeyStore:
+  PrivateKeyFile: ./encrypted_private_key.json
+  PasswordFile: ./password.txt
+
+MetricsAPIPort: 15000
+```
+</CodeGroup>
+
+---
+
+## Share Configuration
+
+For multi-operator setups, you can use separate share configuration files:
+
+```bash
+./bin/ssvnode start-node \
+  --config ./config/config.yaml \
+  --share-config ./config/share1.yaml
+```
+
+Example share configuration (`config/example_share.yaml`):
+```yaml
+db:
+  Path: ./data/db/node1
+
+OperatorPrivateKey: <operator-private-key>
+```
+
+This is useful when running multiple operator nodes on the same machine.
+
+---
+
+## Configuration Validation
+
+Validate your configuration before starting:
+
+<Steps>
+  <Step title="Check YAML syntax">
+    ```bash
+    # Using yq
+    yq eval '.' config/config.yaml
+    
+    # Or Python
+    python3 -c "import yaml; yaml.safe_load(open('config/config.yaml'))"
+    ```
+  </Step>
+
+  <Step title="Test connectivity">
+    Verify your beacon and execution nodes are accessible:
+    ```bash
+    # Test beacon node
+    curl http://your-beacon-node:5052/eth/v1/node/health
+    
+    # Test execution node (HTTP endpoint)
+    curl -X POST -H "Content-Type: application/json" \
+      --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' \
+      http://your-eth1-node:8545
+    ```
+  </Step>
+
+  <Step title="Verify file paths">
+    Ensure all file paths exist and are accessible:
+    ```bash
+    # Check keystore file
+    test -f ./encrypted_private_key.json && echo "Keystore exists" || echo "Keystore missing"
+    
+    # Check password file
+    test -f ./password.txt && echo "Password file exists" || echo "Password missing"
+    ```
+  </Step>
+</Steps>
+
+---
+
+## Environment Variables
+
+Some settings can be overridden via environment variables (when using Docker):
+
+```bash
+# In .env file
+CONFIG_PATH=/config/config.yaml
+SHARE_CONFIG=/config/share1.yaml
+DEBUG_PORT=2345  # For debugging
+```
+
+---
+
+## Security Best Practices
+
+<AccordionGroup>
+  <Accordion title="Protect sensitive files">
+    Set appropriate file permissions:
+    ```bash
+    # Keystore and password should be readable only by the node process
+    chmod 600 encrypted_private_key.json
+    chmod 600 password.txt
+    
+    # Config file
+    chmod 644 config/config.yaml
+    ```
+  </Accordion>
+
+  <Accordion title="Firewall configuration">
+    Only expose necessary ports:
+    ```bash
+    # Allow P2P
+    ufw allow 13001/tcp
+    ufw allow 12001/udp
+    
+    # Block API ports from external access
+    ufw deny 15000/tcp  # Metrics
+    ufw deny 16000/tcp  # SSV API
+    ```
+  </Accordion>
+
+  <Accordion title="Backup configuration">
+    Regularly backup your configuration and keystore:
+    ```bash
+    # Backup script
+    tar -czf ssv-backup-$(date +%Y%m%d).tar.gz \
+      config/ \
+      encrypted_private_key.json \
+      password.txt
+    ```
+    
+    Store backups securely offline.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Source Files
+
+Configuration examples are available in the source repository:
+
+- `/config/config.example.yaml` - Main configuration example  
+- `/config/example_share.yaml` - Share configuration template
+- `/config/events.example.yaml` - Local events example
+
+Full documentation: [GitHub - ssvlabs/ssv](https://github.com/ssvlabs/ssv)

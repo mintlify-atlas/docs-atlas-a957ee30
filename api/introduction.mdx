@@ -1,0 +1,130 @@
+---
+title: 'API Overview'
+description: 'Introduction to the SSV Node HTTP API'
+---
+
+The SSV Node exposes a RESTful HTTP API for monitoring and managing validators, inspecting node health, and exporting duty execution traces.
+
+## Base URL
+
+By default, the API server runs on:
+
+```
+http://localhost:16000
+```
+
+You can configure the API address using the `--api-port` flag when starting the node.
+
+## Authentication
+
+The SSV Node API does not require authentication. The API is intended to be accessed locally or within a trusted network environment. 
+
+**Security Note**: Do not expose the API to the public internet without proper network security measures.
+
+## API Endpoints
+
+The API is organized into three main groups:
+
+### Node Endpoints
+
+- `GET /v1/node/health` - Health check and connectivity status
+- `GET /v1/node/identity` - Node identity and network information
+- `GET /v1/node/peers` - Connected peers information
+- `GET /v1/node/topics` - P2P topics and subscriptions
+
+### Validator Endpoints
+
+- `GET /v1/validators` - List validators managed by the node
+
+### Exporter Endpoints
+
+The exporter API provides detailed duty execution traces for debugging and monitoring:
+
+- `GET/POST /v1/exporter/decideds` - Retrieve decided duty participants
+- `GET/POST /v1/exporter/traces/validator` - Validator duty traces (requires full exporter)
+- `GET/POST /v1/exporter/traces/committee` - Committee duty traces (requires full exporter)
+
+<Note>
+Full exporter endpoints require starting the node with the `--exporter` flag enabled.
+</Note>
+
+## Request Format
+
+Most endpoints support query parameters for filtering. The exporter endpoints additionally support POST requests with JSON bodies for complex queries.
+
+### Query Parameters
+
+```bash
+curl "http://localhost:16000/v1/validators?owners=0x1234..."
+```
+
+### JSON Body (Exporter endpoints)
+
+```bash
+curl -X POST http://localhost:16000/v1/exporter/decideds \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": 123456,
+    "to": 123460,
+    "roles": ["ATTESTER"],
+    "indices": [100, 200]
+  }'
+```
+
+## Response Format
+
+All successful responses return JSON with `200 OK` status. Error responses follow a standard format:
+
+```json
+{
+  "status": "Bad Request",
+  "error": "invalid pubkey length: abc123"
+}
+```
+
+## Error Codes
+
+| Status Code | Description |
+|-------------|-------------|
+| `200` | Success |
+| `400` | Bad Request - Invalid parameters |
+| `404` | Not Found - Resource doesn't exist |
+| `429` | Too Many Requests - Rate limit exceeded |
+| `500` | Internal Server Error |
+
+## Rate Limiting
+
+The API implements throttling based on CPU cores:
+
+```
+Max concurrent requests = CPU cores × 4
+```
+
+Excess requests receive `429 Too Many Requests` responses.
+
+## Response Headers
+
+All responses include:
+
+- `X-SSV-Node-Version` - The running SSV node version
+- `Content-Type: application/json`
+
+## Timeouts
+
+- Read timeout: 12 seconds
+- Write timeout: 12 seconds
+- Read header timeout: 10 seconds
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Node Endpoints" icon="server" href="/api/node/health">
+    Monitor node health and connectivity
+  </Card>
+  <Card title="Validator Endpoints" icon="key" href="/api/validators/list">
+    Query validator information
+  </Card>
+  <Card title="Exporter API" icon="chart-line" href="/api/exporter/overview">
+    Access duty execution traces
+  </Card>
+</CardGroup>

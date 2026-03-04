@@ -1,0 +1,380 @@
+---
+title: Running an SSV Node
+description: How to run and manage an SSV node in production
+---
+
+This guide covers running and managing an SSV operator node in production environments.
+
+## Prerequisites
+
+Before running an SSV node, ensure you have:
+
+- **Ethereum Execution Client** (Geth, Nethermind, Besu, etc.)
+- **Ethereum Consensus Client** (Prysm, Lighthouse, Teku, Nimbus)
+- **Docker** (optional, for containerized deployment)
+- **Operator keys** (see [Operator Keys](/operations/operator-keys))
+- **Hardware Requirements**:
+  - CPU: 4+ cores
+  - RAM: 8GB+ recommended
+  - Storage: SSD with 100GB+ free space
+  - Network: Stable internet connection with low latency
+
+## Installation
+
+### Using Pre-built Binary
+
+Download the latest SSV node binary from the [releases page](https://github.com/ssvlabs/ssv/releases):
+
+```bash
+# Download and extract
+wget https://github.com/ssvlabs/ssv/releases/download/vX.X.X/ssv-linux-amd64
+chmod +x ssv-linux-amd64
+mv ssv-linux-amd64 /usr/local/bin/ssvnode
+
+# Verify installation
+ssvnode version
+```
+
+### Building from Source
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/ssvlabs/ssv.git
+    cd ssv
+    ```
+  </Step>
+
+  <Step title="Build the binary">
+    ```bash
+    make build
+    ```
+
+    The binary will be available at `./bin/ssvnode`.
+  </Step>
+
+  <Step title="Verify the build">
+    ```bash
+    ./bin/ssvnode version
+    ```
+  </Step>
+</Steps>
+
+## Configuration
+
+### Create Configuration File
+
+Create a configuration file at `config.yaml`:
+
+```yaml config.yaml
+global:
+  # Console log level (debug, info, warn, error, fatal, panic)
+  LogLevel: info
+  
+  # Debug logs file path
+  LogFilePath: ./data/debug.log
+
+db:
+  # Path to a persistent directory to store the node's database.
+  Path: ./data/db
+
+ssv:
+  # The SSV network to join to
+  # Mainnet = Network: mainnet (default)
+  # Testnet = Network: holesky
+  Network: mainnet
+
+eth2:
+  # HTTP URL of the Beacon node to connect to.
+  BeaconNodeAddr: http://localhost:5052
+
+eth1:
+  # WebSocket URL of the Eth1 node to connect to.
+  ETH1Addr: ws://localhost:8546
+
+p2p:
+  # Optionally specify the external IP address of the node
+  # HostAddress: YOUR_PUBLIC_IP
+  
+  # Optionally override the default TCP & UDP ports
+  # TcpPort: 13001
+  # UdpPort: 12001
+
+# Operator private key (generated with generate-operator-keys command)
+OperatorPrivateKey: <your-base64-encoded-operator-key>
+
+# Enable monitoring at the specified port
+MetricsAPIPort: 15000
+
+# Enable the SSV API (keep private to prevent resource-intensive attacks)
+SSVAPIPort: 16000
+```
+
+<Note>
+  For production, it's recommended to use the encrypted keystore format instead of embedding the private key directly. See [Operator Keys](/operations/operator-keys) for details.
+</Note>
+
+### Using Encrypted Keystore
+
+For enhanced security in production:
+
+```yaml config.yaml
+KeyStore:
+  PrivateKeyFile: /path/to/encrypted_private_key.json
+  PasswordFile: /path/to/password.txt
+```
+
+### Network Configuration
+
+<Warning>
+  Ensure your firewall allows inbound connections on the P2P ports (default: TCP 13001, UDP 12001) for proper network connectivity.
+</Warning>
+
+```yaml
+p2p:
+  HostAddress: YOUR_PUBLIC_IP
+  TcpPort: 13001
+  UdpPort: 12001
+```
+
+## Starting the Node
+
+### Direct Execution
+
+```bash
+ssvnode start-node --config ./config.yaml
+```
+
+### Using Docker
+
+Create a `.env` file:
+
+```bash .env
+CONFIG_PATH=./config/config.yaml
+```
+
+Run with Docker:
+
+```bash
+docker run -d \
+  --name ssv-node \
+  --restart unless-stopped \
+  -p 13001:13001 \
+  -p 12001:12001/udp \
+  -p 15000:15000 \
+  -p 16000:16000 \
+  -v $(pwd)/config:/config \
+  -v $(pwd)/data:/data \
+  --env-file .env \
+  ssvlabs/ssv-node:latest \
+  make BUILD_PATH=/go/bin/ssvnode start-node
+```
+
+### Using Docker Compose
+
+Create `docker-compose.yml`:
+
+```yaml docker-compose.yml
+version: "3.5"
+
+services:
+  ssv-node:
+    image: ssvlabs/ssv-node:latest
+    container_name: ssv-node
+    restart: unless-stopped
+    command: make BUILD_PATH=/go/bin/ssvnode start-node
+    ports:
+      - "13001:13001"      # P2P TCP
+      - "12001:12001/udp"  # P2P UDP
+      - "15000:15000"      # Metrics
+      - "16000:16000"      # SSV API
+    volumes:
+      - ./config:/config
+      - ./data:/data
+    environment:
+      CONFIG_PATH: /config/config.yaml
+```
+
+Start the node:
+
+```bash
+docker-compose up -d
+```
+
+## Monitoring
+
+### Viewing Logs
+
+**Docker logs:**
+```bash
+docker logs ssv-node --follow
+```
+
+**Direct execution:**
+Check the log file specified in `LogFilePath` configuration.
+
+### Metrics Endpoint
+
+Access Prometheus metrics at:
+```
+http://localhost:15000/metrics
+```
+
+### Health Checks
+
+The node automatically monitors the health of connected Ethereum clients:
+- Consensus Layer (beacon node)
+- Execution Layer (eth1 node)
+- Event syncer
+
+Check node status via the API:
+```bash
+curl http://localhost:16000/v1/node/status
+```
+
+## MEV Configuration (Optional)
+
+<Warning>
+  MEV configuration requires careful tuning. Excessive delays can cause missed block proposals.
+</Warning>
+
+To enable MEV optimization:
+
+```yaml config.yaml
+# Duration to wait before requesting block proposal if this operator is proposer-duty Leader
+# This allows extracting higher MEV by waiting for better bids
+ProposerDelay: 300ms
+
+# Safety flag to allow ProposerDelay values higher than 1s
+# WARNING: Values above 1s significantly increase the risk of missing block proposals!
+AllowDangerousProposerDelay: false
+```
+
+<Note>
+  Recommended starting value for `ProposerDelay` is 300ms. Only increase this value if you understand the risks and have tested thoroughly.
+</Note>
+
+## Managing the Node
+
+### Updating the Node
+
+<Steps>
+  <Step title="Stop the node">
+    ```bash
+    # Docker
+    docker-compose down
+    
+    # Systemd
+    systemctl stop ssv-node
+    ```
+  </Step>
+
+  <Step title="Backup the database">
+    ```bash
+    cp -r ./data/db ./data/db.backup
+    ```
+  </Step>
+
+  <Step title="Update the binary or image">
+    ```bash
+    # Docker
+    docker pull ssvlabs/ssv-node:latest
+    
+    # Binary
+    wget https://github.com/ssvlabs/ssv/releases/download/vX.X.X/ssv-linux-amd64
+    chmod +x ssv-linux-amd64
+    mv ssv-linux-amd64 /usr/local/bin/ssvnode
+    ```
+  </Step>
+
+  <Step title="Restart the node">
+    ```bash
+    # Docker
+    docker-compose up -d
+    
+    # Systemd
+    systemctl start ssv-node
+    ```
+  </Step>
+</Steps>
+
+### Changing Networks
+
+<Warning>
+  Changing networks requires clearing the database. Never reuse the same database across different networks.
+</Warning>
+
+```bash
+# Stop the node
+docker-compose down
+
+# Clear the database
+rm -rf ./data/db
+
+# Update config.yaml network setting
+# ssv:
+#   Network: holesky  # or mainnet
+
+# Restart the node
+docker-compose up -d
+```
+
+## Troubleshooting
+
+### Node Won't Start
+
+1. **Check Ethereum client connectivity:**
+   ```bash
+   # Test beacon node
+   curl http://localhost:5052/eth/v1/node/health
+   
+   # Test execution node (if WebSocket)
+   wscat -c ws://localhost:8546
+   ```
+
+2. **Verify operator key configuration:**
+   - Ensure `OperatorPrivateKey` or `KeyStore` is properly configured
+   - Check file permissions for keystore files
+
+3. **Check port conflicts:**
+   ```bash
+   netstat -tulpn | grep -E '13001|12001|15000|16000'
+   ```
+
+### Database Issues
+
+If you encounter database corruption:
+
+```bash
+# Stop the node
+docker-compose down
+
+# Remove corrupted database
+rm -rf ./data/db
+
+# Restart (will resync from scratch)
+docker-compose up -d
+```
+
+### P2P Connectivity Issues
+
+- Ensure your public IP is correctly configured in `HostAddress`
+- Verify firewall rules allow inbound UDP/TCP on P2P ports
+- Check NAT/port forwarding configuration
+
+## Production Best Practices
+
+1. **Use encrypted keystores** instead of plain-text private keys
+2. **Enable monitoring** with Prometheus/Grafana
+3. **Set up alerts** for node downtime or sync issues
+4. **Regular backups** of the database directory
+5. **Keep ports 16000 (API) private** - only expose to trusted networks
+6. **Monitor validator performance** through the SSV network
+7. **Keep the node updated** with the latest releases
+8. **Use systemd or similar** for automatic restart on failure
+
+## Next Steps
+
+- [Generate Operator Keys](/operations/operator-keys)
+- [Manage Validators](/operations/validator-management)
+- [Local Development Setup](/operations/local-development)

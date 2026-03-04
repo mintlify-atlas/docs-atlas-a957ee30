@@ -1,0 +1,538 @@
+---
+title: Production Best Practices
+description: Best practices for deploying SSV Node in production environments
+---
+
+## Overview
+
+Running an SSV Node in production requires careful planning and configuration to ensure reliability, performance, and security. This guide covers best practices for production deployments.
+
+## Infrastructure Requirements
+
+### Hardware Specifications
+
+#### Minimum Requirements
+
+- **CPU**: 4 cores (2.5 GHz+)
+- **RAM**: 8 GB
+- **Storage**: 100 GB SSD
+- **Network**: 100 Mbps connection
+- **Operating System**: Ubuntu 20.04 LTS or later (recommended)
+
+#### Recommended Specifications
+
+- **CPU**: 8 cores (3.0 GHz+)
+- **RAM**: 16 GB
+- **Storage**: 500 GB NVMe SSD
+- **Network**: 1 Gbps connection with low latency
+- **Operating System**: Ubuntu 22.04 LTS
+
+<Warning>
+  SSV Nodes should run on dedicated hardware or VMs. Sharing resources with other intensive applications may impact validator performance and rewards.
+</Warning>
+
+### Network Requirements
+
+#### Port Configuration
+
+Ensure the following ports are open and accessible:
+
+| Port | Protocol | Direction | Purpose |
+|------|----------|-----------|--------|
+| 12001 | UDP | Inbound/Outbound | P2P discovery (discv5) |
+| 13001 | TCP | Inbound/Outbound | P2P communication (libp2p) |
+| 15000 | TCP | Internal only | Metrics API |
+| 16000 | TCP | Internal only | SSV API |
+
+<Warning>
+  **Never expose ports 15000 and 16000 to the public internet.** These APIs should only be accessible from your monitoring infrastructure or trusted networks.
+</Warning>
+
+#### Firewall Rules
+
+Example firewall configuration using `ufw`:
+
+```bash
+# Allow SSH (adjust port as needed)
+sudo ufw allow 22/tcp
+
+# Allow P2P ports
+sudo ufw allow 12001/udp
+sudo ufw allow 13001/tcp
+
+# Enable firewall
+sudo ufw enable
+```
+
+## Execution and Consensus Clients
+
+### Client Selection
+
+For production deployments, run your own Ethereum execution and consensus clients:
+
+**Execution Layer (ETH1) Options:**
+- Geth
+- Nethermind
+- Besu
+- Erigon
+
+**Consensus Layer (ETH2) Options:**
+- Lighthouse
+- Prysm
+- Teku
+- Nimbus
+- Lodestar
+
+<Warning>
+  **Do not rely on third-party RPC providers for production validators.** Running your own clients ensures maximum uptime and eliminates dependencies on external services.
+</Warning>
+
+### Client Configuration
+
+#### Execution Client (WebSocket)
+
+```yaml
+eth1:
+  ETH1Addr: ws://localhost:8546
+```
+
+Ensure your execution client has WebSocket enabled:
+
+```bash
+# Geth example
+geth --ws --ws.addr 0.0.0.0 --ws.port 8546 --ws.api eth,net,web3
+```
+
+#### Consensus Client (HTTP)
+
+```yaml
+eth2:
+  BeaconNodeAddr: http://localhost:5052
+```
+
+### Redundancy
+
+For critical production deployments, configure multiple beacon nodes:
+
+<Accordion title="Multiple Beacon Node Configuration">
+  While SSV Node currently supports a single beacon node endpoint in the configuration, you can implement redundancy at the infrastructure level:
+
+  1. **Load Balancer Approach**: Use a load balancer (HAProxy, NGINX) to distribute requests across multiple beacon nodes
+  2. **Failover Setup**: Configure automatic failover using health checks
+  3. **Monitoring**: Set up alerts for beacon node availability
+
+  Example HAProxy configuration:
+  ```
+  frontend beacon_frontend
+      bind *:5052
+      default_backend beacon_nodes
+
+  backend beacon_nodes
+      balance roundrobin
+      option httpchk GET /eth/v1/node/health
+      server beacon1 10.0.1.10:5052 check
+      server beacon2 10.0.1.11:5052 check backup
+  ```
+</Accordion>
+
+## Configuration Best Practices
+
+### Production Configuration Template
+
+```yaml
+global:
+  LogLevel: info
+  LogFilePath: ./data/debug.log
+  # JSON format for structured logging
+  LogFormat: json
+
+db:
+  Path: ./data/db
+
+ssv:
+  Network: mainnet
+
+eth2:
+  BeaconNodeAddr: http://localhost:5052
+  ValidatorOptions:
+    # Enable for better performance
+    BuilderProposals: true
+
+eth1:
+  ETH1Addr: ws://localhost:8546
+
+p2p:
+  # Set your public IP for better P2P connectivity
+  HostAddress: YOUR_PUBLIC_IP
+  TcpPort: 13001
+  UdpPort: 12001
+
+# Use encrypted keystore (see Security Guide)
+KeyStore:
+  PrivateKeyFile: /path/to/encrypted_private_key.json
+  PasswordFile: /path/to/password.txt
+
+# Enable metrics for monitoring
+MetricsAPIPort: 15000
+
+# Enable SSV API (restrict access via firewall)
+SSVAPIPort: 16000
+
+# Optional: Enable distributed tracing
+EnableTraces: false
+```
+
+### Time Synchronization
+
+<Warning>
+  **Critical**: Ensure system time is synchronized with NTP servers. Time drift can cause missed attestations and proposals.
+</Warning>
+
+```bash
+# Install and configure chrony
+sudo apt-get install chrony
+
+# Verify time synchronization
+timedatectl status
+
+# Check chrony sources
+chronyc sources
+```
+
+## MEV Configuration
+
+### Optimizing MEV Rewards
+
+SSV Node supports MEV-boost integration through the consensus client. Configure `ProposerDelay` to optimize MEV extraction:
+
+```yaml
+# Duration to wait before requesting block proposal
+# Start with 300ms and adjust based on performance
+ProposerDelay: 300ms
+```
+
+<Warning>
+  Values above 1 second significantly increase the risk of missing block proposals. If you need to exceed 1s, you must also set:
+  ```yaml
+  AllowDangerousProposerDelay: true
+  ```
+  See the MEV Configuration section below for detailed analysis.
+</Warning>
+
+### Recommended MEV Settings
+
+- **Conservative**: 300ms - Safe starting point
+- **Moderate**: 500-800ms - Balance between MEV and safety
+- **Aggressive**: 1000-1200ms - Maximum reasonable value
+
+## Resource Management
+
+### Database Management
+
+The SSV Node uses BadgerDB for persistent storage.
+
+#### Disk Space Monitoring
+
+```bash
+# Check database size
+du -sh /path/to/data/db
+
+# Set up alerts for disk usage > 80%
+```
+
+#### Backup Strategy
+
+```bash
+# Stop the node before backup
+docker stop ssv_node
+
+# Backup database directory
+tar -czf ssv-backup-$(date +%Y%m%d).tar.gz /path/to/data/db
+
+# Restart the node
+docker start ssv_node
+```
+
+### Log Management
+
+#### Log Rotation
+
+Docker log rotation is configured via:
+
+```yaml
+services:
+  ssv-node:
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "500m"
+        max-file: "10"
+```
+
+For the debug log file, use `logrotate`:
+
+```bash
+# /etc/logrotate.d/ssv-node
+/path/to/data/debug.log {
+    daily
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0644 root root
+}
+```
+
+#### Structured Logging
+
+For production monitoring, use JSON format:
+
+```yaml
+global:
+  LogFormat: json
+  LogLevel: info
+```
+
+## High Availability
+
+### Monitoring and Alerting
+
+Implement comprehensive monitoring:
+
+<Steps>
+  <Step title="Metrics Collection">
+    Use Prometheus to scrape metrics from port 15000:
+    ```yaml
+    - job_name: 'ssv-node'
+      static_configs:
+        - targets: ['localhost:15000']
+    ```
+  </Step>
+
+  <Step title="Critical Alerts">
+    Set up alerts for:
+    - Node downtime
+    - Missed attestations
+    - Missed proposals
+    - Disk space > 80%
+    - Memory usage > 90%
+    - P2P peer count < threshold
+  </Step>
+
+  <Step title="Dashboard Setup">
+    Create Grafana dashboards to monitor:
+    - Attestation success rate
+    - Attestation correctness
+    - Attestation effectiveness
+    - QBFT consensus metrics
+    - P2P network health
+  </Step>
+</Steps>
+
+See [Monitoring Guide](/monitoring/metrics) for detailed setup instructions.
+
+### Automated Restarts
+
+Configure automatic restart on failure:
+
+```yaml
+services:
+  ssv-node:
+    restart: unless-stopped
+    # Or for more control:
+    restart: on-failure:3
+```
+
+### Health Checks
+
+```yaml
+services:
+  ssv-node:
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:15000/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+```
+
+## Performance Optimization
+
+### System Tuning
+
+#### Increase File Descriptors
+
+```bash
+# /etc/security/limits.conf
+* soft nofile 65536
+* hard nofile 65536
+```
+
+#### Network Optimization
+
+```bash
+# /etc/sysctl.conf
+net.core.rmem_max = 134217728
+net.core.wmem_max = 134217728
+net.ipv4.tcp_rmem = 4096 87380 67108864
+net.ipv4.tcp_wmem = 4096 65536 67108864
+
+# Apply changes
+sudo sysctl -p
+```
+
+### Container Resource Limits
+
+```yaml
+services:
+  ssv-node:
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 4G
+```
+
+## Disaster Recovery
+
+### Backup Checklist
+
+- [ ] Operator private keys (encrypted keystore + password)
+- [ ] Configuration files
+- [ ] Database directory
+- [ ] Docker Compose configuration
+
+### Recovery Procedure
+
+<Steps>
+  <Step title="Prepare new server">
+    Set up a new server with the same specifications and install Docker.
+  </Step>
+
+  <Step title="Restore configuration">
+    ```bash
+    # Copy configuration and keys
+    scp backup-server:/path/to/config.yaml .
+    scp backup-server:/path/to/keystore.json .
+    scp backup-server:/path/to/password.txt .
+    ```
+  </Step>
+
+  <Step title="Restore database (optional)">
+    ```bash
+    # Extract database backup
+    tar -xzf ssv-backup-20260304.tar.gz -C /path/to/data/
+    ```
+    
+    <Warning>
+      The node can sync from network events if database is not restored. Only restore from backup if you need historical data.
+    </Warning>
+  </Step>
+
+  <Step title="Start the node">
+    ```bash
+    docker-compose up -d
+    ```
+  </Step>
+
+  <Step title="Verify operation">
+    ```bash
+    # Check logs
+    docker-compose logs -f
+    
+    # Verify metrics
+    curl http://localhost:15000/metrics
+    ```
+  </Step>
+</Steps>
+
+## Update Strategy
+
+### Pre-Update Checklist
+
+- [ ] Review release notes for breaking changes
+- [ ] Backup current database
+- [ ] Test update on testnet/development environment
+- [ ] Schedule update during low-activity period
+- [ ] Notify monitoring team
+
+### Update Procedure
+
+<Steps>
+  <Step title="Pull new image">
+    ```bash
+    docker pull ssvlabs/ssv-node:vX.X.X
+    ```
+  </Step>
+
+  <Step title="Update configuration if needed">
+    Check release notes for any required configuration changes.
+  </Step>
+
+  <Step title="Perform update">
+    ```bash
+    docker-compose down
+    docker-compose up -d
+    ```
+  </Step>
+
+  <Step title="Monitor performance">
+    Watch logs and metrics for any issues:
+    ```bash
+    docker-compose logs -f --tail=100
+    ```
+  </Step>
+</Steps>
+
+### Rollback Procedure
+
+If issues occur after update:
+
+```bash
+# Stop the node
+docker-compose down
+
+# Update image tag to previous version
+sed -i 's/ssvlabs\/ssv-node:vX.X.X/ssvlabs\/ssv-node:vX.X.X-previous/' docker-compose.yaml
+
+# Restart with previous version
+docker-compose up -d
+```
+
+## Checklist for Production Deployment
+
+### Pre-Deployment
+
+- [ ] Hardware meets recommended specifications
+- [ ] Firewall configured correctly
+- [ ] Execution and consensus clients running and synced
+- [ ] NTP time synchronization configured
+- [ ] Operator keys generated and backed up securely
+- [ ] Configuration file created and validated
+
+### Deployment
+
+- [ ] Docker and Docker Compose installed
+- [ ] SSV Node container started successfully
+- [ ] Logs show successful P2P connection
+- [ ] Node is syncing/synced with network
+
+### Post-Deployment
+
+- [ ] Metrics endpoint accessible
+- [ ] Monitoring and alerting configured
+- [ ] Log rotation configured
+- [ ] Backup strategy implemented
+- [ ] Documentation updated with server details
+- [ ] Team notified of deployment
+
+## Next Steps
+
+- Review [Security Hardening](/deployment/security)
+- Set up [Monitoring and Metrics](/monitoring/metrics)
+- Configure MEV settings in your node configuration
+- Join the [SSV Community](https://discord.gg/5vT22pRBrf) for support

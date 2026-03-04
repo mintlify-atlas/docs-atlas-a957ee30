@@ -1,0 +1,200 @@
+---
+title: Installation
+description: Install and build the SSV Node software on your system
+---
+
+SSV Node is a secure and scalable staking infrastructure for distributed Ethereum validators. This guide will walk you through the installation process.
+
+## Prerequisites
+
+Before installing SSV Node, ensure your system meets the following requirements:
+
+- **Git** - Version control system
+- **Go** - Version 1.24 or higher
+- **Docker** - Container runtime (optional, for Docker-based deployment)
+- **Make** - Build automation tool
+- **yq** - YAML processor (for local network development)
+
+### Verify Prerequisites
+
+<Steps>
+  <Step title="Check Go version">
+    Ensure you have Go 1.24 or higher installed:
+    ```bash
+    go version
+    ```
+    
+    If you need to install or update Go, visit [golang.org/dl](https://golang.org/dl/)
+  </Step>
+
+  <Step title="Verify Docker (optional)">
+    If you plan to use Docker deployment:
+    ```bash
+    docker --version
+    docker-compose --version
+    ```
+  </Step>
+
+  <Step title="Check Make">
+    Verify Make is installed:
+    ```bash
+    make --version
+    ```
+  </Step>
+</Steps>
+
+## Installation Methods
+
+<Tabs>
+  <Tab title="From Source">
+    ### Clone the Repository
+
+    <Steps>
+      <Step title="Clone SSV repository">
+        ```bash
+        git clone https://github.com/ssvlabs/ssv.git
+        cd ssv
+        ```
+      </Step>
+
+      <Step title="Download dependencies">
+        ```bash
+        go mod download
+        go mod verify
+        ```
+      </Step>
+
+      <Step title="Build the binary">
+        Build the SSV Node binary:
+        ```bash
+        make build
+        ```
+        
+        This creates the executable at `./bin/ssvnode`
+      </Step>
+
+      <Step title="Verify installation">
+        Check the version to confirm successful build:
+        ```bash
+        ./bin/ssvnode version
+        ```
+      </Step>
+    </Steps>
+
+    The build process compiles with the following flags:
+    - Git commit hash for version tracking
+    - Git tag for release version
+    - CGO enabled for optimal performance
+  </Tab>
+
+  <Tab title="Docker">
+    ### Using Docker
+
+    <Steps>
+      <Step title="Clone the repository">
+        ```bash
+        git clone https://github.com/ssvlabs/ssv.git
+        cd ssv
+        ```
+      </Step>
+
+      <Step title="Build Docker image">
+        ```bash
+        docker build -t ssv-node .
+        ```
+        
+        The Dockerfile uses multi-stage builds for optimized image size.
+      </Step>
+
+      <Step title="Pull pre-built image (alternative)">
+        Alternatively, use the official pre-built image:
+        ```bash
+        docker pull ssvlabs/ssv-node:latest
+        ```
+      </Step>
+    </Steps>
+
+    <Note>
+    The Docker image is based on Go 1.24 and includes all necessary runtime dependencies.
+    </Note>
+  </Tab>
+</Tabs>
+
+## Build Configuration
+
+### Build Options
+
+The Makefile supports several build configurations:
+
+| Command | Description |
+|---------|-------------|
+| `make build` | Standard build with version info |
+| `make docker` | Build and run in Docker (background) |
+| `make docker-run` | Build and run in Docker (foreground) |
+| `make docker-image` | Run using official Docker image |
+
+### Custom Build Flags
+
+The build process automatically includes:
+
+- **Commit Hash**: Current Git commit for traceability
+- **Version**: Git tag if on a tagged release, otherwise "untagged"
+- **CGO**: Enabled for performance optimization
+
+## Development Build
+
+For development purposes, you can build with additional debugging capabilities:
+
+```bash
+CGO_ENABLED=1 go build -o ./bin/ssvnode -ldflags "-X main.Commit=$(git rev-parse HEAD) -X main.Version=dev" ./cmd/ssvnode/
+```
+
+## Next Steps
+
+After successful installation:
+
+1. [Configure your node](/getting-started/configuration) with the required settings
+2. Follow the [Quick Start Guide](/getting-started/quick-start) to run your first node
+3. Generate operator keys for your node setup
+
+<Card title="Generate Operator Keys" icon="key" href="/getting-started/configuration#operator-keys">
+  Learn how to generate and secure your operator keys
+</Card>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Build fails with 'go: module not found'">
+    Ensure you've run `go mod download` and that your Go version meets the minimum requirement (1.24+).
+    
+    ```bash
+    go clean -modcache
+    go mod download
+    make build
+    ```
+  </Accordion>
+
+  <Accordion title="Docker build fails">
+    Make sure Docker is running and you have sufficient disk space:
+    
+    ```bash
+    docker system df
+    docker system prune  # Clean up if needed
+    ```
+  </Accordion>
+
+  <Accordion title="Permission denied when running binary">
+    Ensure the binary has execute permissions:
+    
+    ```bash
+    chmod +x ./bin/ssvnode
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Source Code Reference
+
+The main build configuration is defined in:
+- `/Makefile` - Build automation and commands
+- `/Dockerfile` - Multi-stage Docker build configuration
+- `/cmd/ssvnode/` - Main application entry point

@@ -1,0 +1,371 @@
+---
+title: Logging Configuration
+description: Configure and analyze SSV Node logs for debugging and monitoring
+---
+
+SSV Node uses structured logging with [Zap](https://github.com/uber-go/zap) to provide detailed operational insights. This page covers log configuration, formats, and analysis techniques.
+
+## Log Configuration
+
+Configure logging through your `config.yaml` or environment variables.
+
+### Configuration Options
+
+Based on the source code (source: `observability/config.go:12` and `observability/log/global.go:33`), the logger supports:
+
+```yaml config.yaml
+# Logging configuration
+LogLevel: "info"        # debug, info, warn, error, fatal
+LogFormat: "json"       # json or console
+LogLevelFormat: "capital" # capital, capitalColor, lowercase
+LogFilePath: "/var/log/ssv/node.log"  # Optional: write logs to file
+LogFileSize: 100        # MB per log file (when using file output)
+LogFileBackups: 10      # Number of old log files to keep
+```
+
+### Log Levels
+
+<AccordionGroup>
+  <Accordion title="debug">
+    **Use for**: Development and detailed troubleshooting
+    
+    Includes verbose information about:
+    - Message routing and processing
+    - Duty scheduling details
+    - Network events and peer connections
+    - Consensus round details
+    - Cache hits/misses
+    
+    <Warning>
+    Debug logging generates significant output and may impact performance. Use only when necessary.
+    </Warning>
+  </Accordion>
+  
+  <Accordion title="info" default>
+    **Use for**: Production monitoring (recommended)
+    
+    Includes:
+    - Node startup and shutdown events
+    - Validator lifecycle events
+    - Duty handler start/stop
+    - Successful duty submissions
+    - Network connection status
+    - Important state changes
+    
+    This is the recommended level for production deployments.
+  </Accordion>
+  
+  <Accordion title="warn">
+    **Use for**: Highlighting potential issues
+    
+    Includes:
+    - Validator not found warnings
+    - Misaligned slot and duty timing
+    - Subscription channel congestion
+    - Recoverable errors
+    - Performance degradation signals
+  </Accordion>
+  
+  <Accordion title="error">
+    **Use for**: Tracking operational failures
+    
+    Includes:
+    - Failed duty submissions
+    - Beacon node connection failures
+    - Database operation errors
+    - Validator errors
+    - Message processing failures
+    
+    <Note>
+    Error-level logs indicate issues requiring operator attention.
+    </Note>
+  </Accordion>
+  
+  <Accordion title="fatal">
+    **Use for**: Critical failures that stop the node
+    
+    Includes:
+    - Panic recovery events with stack traces
+    - Unrecoverable initialization failures
+    - Critical configuration errors
+    
+    <Warning>
+    Fatal logs indicate the node has stopped or will stop immediately.
+    </Warning>
+  </Accordion>
+</AccordionGroup>
+
+### Log Formats
+
+#### JSON Format (Production)
+
+Structured logs suitable for log aggregation and analysis.
+
+```json
+{
+  "level": "INFO",
+  "time": "2026-03-04T10:15:30.123456Z",
+  "caller": "duties/attester.go:145",
+  "msg": "starting duty handler",
+  "name": "ssv.operator.duties.attester"
+}
+```
+
+<Tip>
+JSON format is recommended for production as it integrates seamlessly with logging platforms like ELK, Splunk, or Grafana Loki.
+</Tip>
+
+#### Console Format (Development)
+
+Human-readable format for local development.
+
+```
+2026-03-04T10:15:30.123456Z	INFO	duties/attester.go:145	starting duty handler	{"name": "ssv.operator.duties.attester"}
+```
+
+### Level Format Options
+
+Based on source: `observability/log/global.go:20`
+
+- **`capital`**: `INFO`, `ERROR`, `DEBUG` (default)
+- **`capitalColor`**: Colored level names (useful for console viewing)
+- **`lowercase`**: `info`, `error`, `debug`
+
+### File Output Configuration
+
+SSV Node supports rotating log files using [lumberjack](source: `observability/log/global.go:109`).
+
+```yaml config.yaml
+LogFilePath: "/var/log/ssv/node.log"
+LogFileSize: 100      # Megabytes before rotation
+LogFileBackups: 10    # Keep 10 old log files
+```
+
+**File rotation behavior**:
+- New file created when size exceeds `LogFileSize` MB
+- Keeps `LogFileBackups` number of old files
+- Old files retained for 28 days maximum
+- Files are not compressed by default
+
+<Note>
+When file output is configured, logs are written to **both** stdout and the log file. The file always contains all log levels (debug and above) regardless of the `LogLevel` setting.
+</Note>
+
+## Log Fields and Context
+
+SSV Node uses structured logging with consistent field names across the codebase.
+
+### Standard Log Fields
+
+Based on source: `observability/log/fields/fields.go` and log examples:
+
+| Field Name | Description | Example |
+|------------|-------------|----------|
+| `epoch` | Beacon chain epoch | `{"epoch": 12345}` |
+| `slot` | Beacon chain slot | `{"slot": 394560}` |
+| `validator` | Validator public key (hex) | `{"validator": "0x8234...abcd"}` |
+| `duty_id` | Unique duty identifier | `{"duty_id": "..."}`|
+| `role` | Validator duty role | `{"role": "ATTESTER"}` |
+| `address` | Network address | `{"address": "0.0.0.0:15000"}` |
+| `name` | Logger component name | `{"name": "ssv.operator.duties"}` |
+| `caller` | Source file and line | `{"caller": "attester.go:145"}` |
+
+### Component Names
+
+Logger names follow a hierarchical pattern (source: `observability/log/names.go`):
+
+- `ssv.observability` - Observability system
+- `ssv.operator.duties` - Duty handlers
+  - `ssv.operator.duties.attester` - Attester duty handler
+  - `ssv.operator.duties.proposer` - Proposer duty handler
+  - `ssv.operator.duties.committee` - Sync committee handler
+- `ssv.operator.validator` - Validator lifecycle management
+- `ssv.runner` - Duty execution runners
+- `ssv.api` - API server
+- `ssv.metrics` - Metrics handler
+
+## Log Examples
+
+### Startup Logs
+
+```json
+{"level":"INFO","time":"2026-03-04T10:15:30.000000Z","msg":"starting duty handler","name":"ssv.operator.duties.attester"}
+{"level":"INFO","time":"2026-03-04T10:15:30.001000Z","msg":"setup collection","name":"ssv.metrics","address":"0.0.0.0:15000","enableProf":true}
+{"level":"INFO","time":"2026-03-04T10:15:30.002000Z","msg":"Serving SSV API","addr":":13000"}
+```
+
+### Duty Execution Logs
+
+```json
+{"level":"DEBUG","time":"2026-03-04T10:16:00.000000Z","msg":"🛠 ticker event","epoch_slot_pos":"12345/394560/0"}
+{"level":"DEBUG","time":"2026-03-04T10:16:00.100000Z","msg":"🗂 got duties","epoch":12345,"duties_count":42}
+{"level":"DEBUG","time":"2026-03-04T10:16:00.500000Z","msg":"successfully fetched attestation data","slot":394560}
+```
+
+### Reorg and Index Change Events
+
+```json
+{"level":"INFO","time":"2026-03-04T10:16:05.000000Z","msg":"🔀 reorg event received","epoch_slot_pos":"12345/394561/1","event":{"slot":394560,"depth":1}}
+{"level":"INFO","time":"2026-03-04T10:17:00.000000Z","msg":"🔁 indices change received","epoch_slot_pos":"12345/394565/5"}
+```
+
+### Warning Logs
+
+```json
+{"level":"WARN","time":"2026-03-04T10:16:10.000000Z","msg":"validator not found","validator":"0x8234567890abcdef..."}
+{"level":"WARN","time":"2026-03-04T10:16:11.000000Z","msg":"subscriber channel full, dropping the message"}
+{"level":"WARN","time":"2026-03-04T10:16:12.000000Z","msg":"validator not yet participating","validator_index":12345}
+```
+
+### Error Logs
+
+```json
+{"level":"ERROR","time":"2026-03-04T10:16:15.000000Z","msg":"failed to fetch duties for current epoch","error":"connection refused","epoch":12345}
+{"level":"ERROR","time":"2026-03-04T10:16:16.000000Z","msg":"failed to submit beacon committee subscription","error":"timeout exceeded"}
+{"level":"ERROR","time":"2026-03-04T10:16:17.000000Z","msg":"exporter API request failed","error":"invalid request"}
+```
+
+## Log Analysis
+
+### Using jq for JSON Logs
+
+Filter and analyze JSON-formatted logs:
+
+```bash
+# Filter ERROR level logs
+cat node.log | jq 'select(.level == "ERROR")'
+
+# Show all logs for a specific validator
+cat node.log | jq 'select(.validator == "0x8234...")'
+
+# Count errors by message
+cat node.log | jq -r 'select(.level == "ERROR") | .msg' | sort | uniq -c
+
+# Extract duty execution timeline
+cat node.log | jq 'select(.msg | contains("duty")) | {time, msg, epoch, slot}'
+
+# Find logs from specific component
+cat node.log | jq 'select(.name | startswith("ssv.operator.duties"))'
+```
+
+### Using grep for Pattern Matching
+
+```bash
+# Find all reorg events
+grep "reorg event" node.log
+
+# Track validator lifecycle
+grep -E "(starting|stopping|removed)" node.log
+
+# Find connection errors
+grep -i "connection" node.log | grep -i "error\|fail"
+
+# Monitor duty submissions
+grep "submission" node.log
+```
+
+### Log Aggregation with Grafana Loki
+
+<Tip>
+Grafana Loki provides powerful log aggregation for SSV Node's JSON logs.
+</Tip>
+
+**Example LogQL queries**:
+
+```logql
+# All error logs from SSV node
+{job="ssv-node"} | json | level="ERROR"
+
+# Validator-related warnings
+{job="ssv-node"} | json | name=~".*validator.*" | level="WARN"
+
+# Duty execution timeline
+{job="ssv-node"} | json | msg=~".*duty.*"
+
+# Rate of errors per minute
+sum(rate({job="ssv-node"} | json | level="ERROR" [1m]))
+
+# Errors grouped by component
+sum by (name) (count_over_time({job="ssv-node"} | json | level="ERROR" [5m]))
+```
+
+## Common Log Patterns
+
+### Normal Operation
+
+```json
+{"level":"INFO","msg":"starting duty handler"}
+{"level":"DEBUG","msg":"🛠 ticker event"}
+{"level":"DEBUG","msg":"🗂 got duties"}
+{"level":"DEBUG","msg":"successfully fetched attestation data"}
+```
+
+### Beacon Node Connectivity Issues
+
+```json
+{"level":"ERROR","msg":"failed to fetch duties for current epoch","error":"connection refused"}
+{"level":"ERROR","msg":"couldn't fetch node version","error":"context deadline exceeded"}
+```
+
+<Note>
+Persistent beacon node errors indicate network connectivity or beacon node availability issues. Check your beacon node endpoint configuration.
+</Note>
+
+### Performance Degradation
+
+```json
+{"level":"WARN","msg":"current slot and duty slot are not aligned"}
+{"level":"WARN","msg":"subscriber channel full, dropping the message"}
+```
+
+### Chain Reorg Events
+
+```json
+{"level":"INFO","msg":"🔀 reorg event received","event":{"slot":394560,"depth":1}}
+```
+
+Reorgs are normal but frequent deep reorgs may indicate beacon chain issues.
+
+## Logging Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Production: Use JSON" icon="brackets-curly">
+    Always use JSON format in production for easier parsing and integration with log aggregation tools.
+  </Card>
+  
+  <Card title="Set Appropriate Level" icon="sliders">
+    Use `info` level for production. Enable `debug` only when troubleshooting specific issues.
+  </Card>
+  
+  <Card title="Implement Log Rotation" icon="rotate">
+    Configure file output with rotation to prevent disk space exhaustion.
+  </Card>
+  
+  <Card title="Monitor Error Rates" icon="chart-line">
+    Track error log frequency as a key health indicator. Sudden increases warrant investigation.
+  </Card>
+</CardGroup>
+
+### Log Retention Recommendations
+
+- **Production**: Retain 7-30 days of logs
+- **Development**: 1-7 days sufficient
+- **Compliance**: Adjust based on regulatory requirements
+
+### Privacy Considerations
+
+<Warning>
+Logs may contain validator public keys and operational data. Ensure proper access controls and consider data privacy regulations when sharing logs.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Prometheus Metrics" icon="chart-mixed" href="/monitoring/metrics">
+    Set up Prometheus metrics for quantitative monitoring
+  </Card>
+  
+  <Card title="Troubleshooting Guide" icon="wrench" href="/monitoring/troubleshooting">
+    Debug common issues using logs and metrics
+  </Card>
+</CardGroup>

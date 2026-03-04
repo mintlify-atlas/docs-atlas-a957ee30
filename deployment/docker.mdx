@@ -1,0 +1,404 @@
+---
+title: Docker Deployment
+description: Deploy SSV Node using Docker and Docker Compose
+---
+
+## Overview
+
+SSV Node provides official Docker images for easy deployment. This guide covers deploying SSV Node using Docker and Docker Compose for both single-node and multi-node configurations.
+
+## Prerequisites
+
+Before deploying SSV Node with Docker, ensure you have:
+
+- Docker Engine (v20.10 or later)
+- Docker Compose (v2.0 or later)
+- Access to Ethereum Execution (ETH1) and Consensus (ETH2) nodes
+- Operator private keys (see [Generating Operator Keys](#generating-operator-keys))
+- At least 4GB RAM and 50GB disk space
+- Ports 12001 (UDP) and 13001 (TCP) available and open
+
+## Docker Image
+
+The official SSV Node Docker image is available at:
+
+```bash
+ssvlabs/ssv-node:latest
+```
+
+You can also use specific version tags:
+
+```bash
+ssvlabs/ssv-node:v1.x.x
+```
+
+## Generating Operator Keys
+
+Before deploying, generate your operator keys:
+
+```bash
+docker run --rm -it 'ssvlabs/ssv-node:latest' /go/bin/ssvnode generate-operator-keys
+```
+
+This will output your operator's public key (`pk`) and private key (`sk`). Save these securely.
+
+<Warning>
+  The raw format is **NOT recommended** for production use as it can expose sensitive data. See the [Security Guide](/deployment/security) for encrypted keystore setup.
+</Warning>
+
+## Single Node Deployment
+
+### Step 1: Create Configuration File
+
+<Steps>
+  <Step title="Create config directory">
+    ```bash
+    mkdir -p ~/ssv-node
+    cd ~/ssv-node
+    ```
+  </Step>
+
+  <Step title="Create config.yaml">
+    Create a `config.yaml` file with the following content:
+
+    ```yaml
+    global:
+      # Console log level (debug, info, warn, error, fatal, panic)
+      LogLevel: info
+      # Debug logs file path
+      LogFilePath: ./data/debug.log
+
+    db:
+      # Path to a persistent directory to store the node's database
+      Path: ./data/db
+
+    ssv:
+      # The SSV network to join
+      # Mainnet = Network: mainnet (default)
+      # Testnet = Network: holesky
+      Network: mainnet
+
+    eth2:
+      # HTTP URL of the Beacon node to connect to
+      BeaconNodeAddr: http://your-beacon-node:5052
+
+    eth1:
+      # WebSocket URL of the Eth1 node to connect to
+      ETH1Addr: ws://your-eth1-node:8546
+
+    p2p:
+      # External IP address of the node (optional, auto-detected if not set)
+      # HostAddress: YOUR_PUBLIC_IP
+      # TCP port for P2P communication
+      # TcpPort: 13001
+      # UDP port for P2P discovery
+      # UdpPort: 12001
+
+    # Operator private key (generated in previous step)
+    OperatorPrivateKey: YOUR_OPERATOR_PRIVATE_KEY
+
+    # Enable metrics monitoring
+    MetricsAPIPort: 15000
+
+    # Enable SSV API (keep private)
+    # SSVAPIPort: 16000
+    ```
+  </Step>
+
+  <Step title="Start the node">
+    Run the Docker container:
+
+    ```bash
+    docker run -d \
+      --restart unless-stopped \
+      --name ssv_node \
+      -e CONFIG_PATH=./config.yaml \
+      -p 13001:13001 \
+      -p 12001:12001/udp \
+      -p 15000:15000 \
+      -v $(pwd)/config.yaml:/config.yaml \
+      -v $(pwd)/data:/data \
+      --log-opt max-size=500m \
+      --log-opt max-file=10 \
+      'ssvlabs/ssv-node:latest' \
+      make BUILD_PATH=/go/bin/ssvnode start-node
+    ```
+  </Step>
+
+  <Step title="View logs">
+    ```bash
+    docker logs ssv_node --follow
+    ```
+  </Step>
+</Steps>
+
+### Environment Variables
+
+Key environment variables used by the SSV Node container:
+
+| Variable | Description | Default |
+|----------|-------------|--------|
+| `CONFIG_PATH` | Path to configuration file | `./config.yaml` |
+| `GODEBUG` | Go runtime debug flags | `netdns=go` |
+
+### Volume Mounts
+
+The container requires the following volume mounts:
+
+| Host Path | Container Path | Purpose |
+|-----------|----------------|--------|
+| `./config.yaml` | `/config.yaml` | Configuration file |
+| `./data` | `/data` | Database and logs |
+
+### Port Mappings
+
+| Port | Protocol | Purpose |
+|------|----------|--------|
+| 13001 | TCP | P2P communication |
+| 12001 | UDP | P2P discovery |
+| 15000 | TCP | Metrics API |
+| 16000 | TCP | SSV API (optional) |
+
+## Docker Compose Deployment
+
+For production deployments, Docker Compose provides better management and configuration.
+
+### Basic Configuration
+
+Create a `docker-compose.yaml` file:
+
+```yaml
+version: "3.8"
+
+services:
+  ssv-node:
+    image: ssvlabs/ssv-node:latest
+    container_name: ssv-node
+    restart: unless-stopped
+    command: make BUILD_PATH=/go/bin/ssvnode start-node
+    environment:
+      CONFIG_PATH: ./config.yaml
+    ports:
+      - "13001:13001"      # P2P TCP
+      - "12001:12001/udp"  # P2P UDP
+      - "15000:15000"      # Metrics
+    volumes:
+      - ./config.yaml:/config.yaml
+      - ./data:/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "500m"
+        max-file: "10"
+    networks:
+      - ssv-network
+
+networks:
+  ssv-network:
+    driver: bridge
+```
+
+### Starting the Node
+
+<Steps>
+  <Step title="Start the service">
+    ```bash
+    docker-compose up -d
+    ```
+  </Step>
+
+  <Step title="Check status">
+    ```bash
+    docker-compose ps
+    ```
+  </Step>
+
+  <Step title="View logs">
+    ```bash
+    docker-compose logs -f ssv-node
+    ```
+  </Step>
+
+  <Step title="Stop the service">
+    ```bash
+    docker-compose down
+    ```
+  </Step>
+</Steps>
+
+## Multi-Node Local Cluster
+
+For development or testing, you can run a multi-node SSV cluster locally.
+
+<Accordion title="Multi-Node Docker Compose Configuration">
+  ```yaml
+  version: "3.8"
+
+  x-base: &default-base
+    image: ssvlabs/ssv-node:latest
+    command: make BUILD_PATH=/go/bin/ssvnode start-node
+    restart: unless-stopped
+    networks:
+      - ssv-cluster
+    environment:
+      CONFIG_PATH: ./config/config.yaml
+
+  services:
+    ssv-node-1:
+      <<: *default-base
+      container_name: ssv-node-1
+      environment:
+        CONFIG_PATH: ./config/config.yaml
+        SHARE_CONFIG: ./config/share1.yaml
+      ports:
+        - "16001:16000"
+        - "17001:15001"
+      volumes:
+        - ./data/ssv-node-1:/data
+        - ./config:/config
+
+    ssv-node-2:
+      <<: *default-base
+      container_name: ssv-node-2
+      environment:
+        CONFIG_PATH: ./config/config.yaml
+        SHARE_CONFIG: ./config/share2.yaml
+      ports:
+        - "16002:16000"
+        - "17002:15002"
+      volumes:
+        - ./data/ssv-node-2:/data
+        - ./config:/config
+
+    ssv-node-3:
+      <<: *default-base
+      container_name: ssv-node-3
+      environment:
+        CONFIG_PATH: ./config/config.yaml
+        SHARE_CONFIG: ./config/share3.yaml
+      ports:
+        - "16003:16000"
+        - "17003:15003"
+      volumes:
+        - ./data/ssv-node-3:/data
+        - ./config:/config
+
+    ssv-node-4:
+      <<: *default-base
+      container_name: ssv-node-4
+      environment:
+        CONFIG_PATH: ./config/config.yaml
+        SHARE_CONFIG: ./config/share4.yaml
+      ports:
+        - "16004:16000"
+        - "17004:15004"
+      volumes:
+        - ./data/ssv-node-4:/data
+        - ./config:/config
+
+  networks:
+    ssv-cluster:
+      driver: bridge
+      name: ssv-cluster
+  ```
+
+  For multi-node clusters, add the following to your `config.yaml`:
+
+  ```yaml
+  p2p:
+    Discovery: mdns
+  
+  LocalEventsPath: ./config/events.yaml
+  ```
+</Accordion>
+
+## Updating the Node
+
+### Check Current Version
+
+```bash
+docker run --rm -it 'ssvlabs/ssv-node:latest' /go/bin/ssvnode version
+```
+
+### Update to Latest Version
+
+<Steps>
+  <Step title="Stop and remove the container">
+    ```bash
+    docker rm -f ssv_node
+    ```
+  </Step>
+
+  <Step title="Pull the latest image">
+    ```bash
+    docker pull ssvlabs/ssv-node:latest
+    ```
+  </Step>
+
+  <Step title="Restart the container">
+    Run the same `docker run` command from the deployment step.
+  </Step>
+</Steps>
+
+For Docker Compose:
+
+```bash
+docker-compose down
+docker-compose pull
+docker-compose up -d
+```
+
+## Health Checks
+
+Add health checks to your Docker Compose configuration:
+
+```yaml
+services:
+  ssv-node:
+    # ... other configuration
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:15000/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+```
+
+## Troubleshooting
+
+### Container Won't Start
+
+1. Check logs:
+   ```bash
+   docker logs ssv_node
+   ```
+
+2. Verify configuration file syntax:
+   ```bash
+   docker run --rm -v $(pwd)/config.yaml:/config.yaml ssvlabs/ssv-node:latest cat /config.yaml
+   ```
+
+3. Ensure ports are not in use:
+   ```bash
+   netstat -tuln | grep -E '12001|13001'
+   ```
+
+### Network Issues
+
+1. Verify firewall rules allow UDP 12001 and TCP 13001
+2. Check if `HostAddress` is correctly set in config.yaml
+3. Ensure execution and consensus node URLs are accessible
+
+### Permission Issues
+
+If you encounter permission errors with volume mounts:
+
+```bash
+sudo chown -R 1000:1000 ./data
+```
+
+## Next Steps
+
+- Configure [Production Best Practices](/deployment/production)
+- Review [Security Hardening](/deployment/security)
+- Set up [Monitoring and Metrics](/monitoring/metrics)

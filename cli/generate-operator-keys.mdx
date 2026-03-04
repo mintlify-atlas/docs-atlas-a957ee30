@@ -1,0 +1,426 @@
+---
+title: 'generate-operator-keys'
+description: 'Generate SSV operator keys for contract event decryption'
+icon: 'key'
+---
+
+## Overview
+
+The `generate-operator-keys` command generates cryptographic keys for your SSV operator. These keys are used to decrypt validator share data from SSV contract events.
+
+The command supports three modes:
+1. **Raw key generation** (default, not recommended for production)
+2. **Encrypted keystore generation** (recommended for production)
+3. **Convert existing raw key to encrypted keystore**
+
+<Warning>
+  Raw format is **NOT recommended** for production use as it can expose sensitive data. Always use encrypted keystore format for production deployments.
+</Warning>
+
+## Usage
+
+```bash
+ssvnode generate-operator-keys [flags]
+```
+
+## Flags
+
+<ParamField path="--password-file" type="string" default="">
+  Path to file containing the password used to encrypt the private key.
+  
+  When provided, the command generates an encrypted keystore JSON file instead of raw keys.
+  
+  **Alias**: `-p`
+  
+  ```bash
+  ssvnode generate-operator-keys --password-file=password.txt
+  ```
+</ParamField>
+
+<ParamField path="--operator-key-file" type="string" default="">
+  Path to an existing operator private key file to convert to encrypted format.
+  
+  Use with `--password-file` to encrypt an existing raw key.
+  
+  **Alias**: `-o`
+  
+  ```bash
+  ssvnode generate-operator-keys --operator-key-file=raw_key.txt --password-file=password.txt
+  ```
+</ParamField>
+
+<ParamField path="--legacy-pubkey" type="boolean" default="false">
+  Store public key in keystore using legacy format (`"pubKey"` instead of `"pubkey"`).
+  
+  Only use if you need compatibility with older SSV versions.
+  
+  **Alias**: `-l`
+  
+  ```bash
+  ssvnode generate-operator-keys --password-file=password.txt --legacy-pubkey
+  ```
+</ParamField>
+
+## Mode 1: Raw Key Generation (Not Recommended)
+
+<Warning>
+  This mode generates unencrypted keys. **Do not use in production!**
+</Warning>
+
+Generate a new operator key pair in raw (base64-encoded) format:
+
+```bash
+./bin/ssvnode generate-operator-keys
+```
+
+### Output
+
+```
+generated public key (base64)  pk=LS0tLS1CRUdJTiBSU0EgUFVCTElDIEtFWS0tLS0tCk1JSUJJakFOQmdr...
+generated private key (base64) sk=LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFcFFJQkFBS0N...
+```
+
+The output shows:
+- `pk` - Public key (base64-encoded)
+- `sk` - Private key (base64-encoded)
+
+<Note>
+  The private key can be used directly in `config.yaml` under `OperatorPrivateKey`, but this is not secure for production.
+</Note>
+
+## Mode 2: Encrypted Keystore Generation (Recommended)
+
+Generate a new operator key encrypted with a password:
+
+### Step 1: Create Password File
+
+```bash
+echo "YourSecurePassword123!" > password.txt
+chmod 600 password.txt
+```
+
+### Step 2: Generate Encrypted Keystore
+
+```bash
+./bin/ssvnode generate-operator-keys --password-file=password.txt
+```
+
+### Output
+
+```
+private key encrypted and stored in encrypted_private_key.json
+```
+
+The command creates `encrypted_private_key.json` containing your encrypted operator key:
+
+```json encrypted_private_key.json
+{
+  "version": 4,
+  "pubkey": "LS0tLS1CRUdJTiBSU0EgUFVCTElDIEtFWS0tLS0t...",
+  "crypto": {
+    "cipher": "aes-128-ctr",
+    "cipherparams": {
+      "iv": "264daa3f303d7259501c93d997d84fe6"
+    },
+    "ciphertext": "8c9b4c...",
+    "kdf": "scrypt",
+    "kdfparams": {
+      "dklen": 32,
+      "n": 262144,
+      "p": 1,
+      "r": 8,
+      "salt": "d4e56740f876aef8..."
+    },
+    "mac": "2103ac29920d71da29f15d..."
+  }
+}
+```
+
+### Step 3: Configure Your Node
+
+Reference the encrypted keystore in your `config.yaml`:
+
+```yaml config.yaml
+KeyStore:
+  PrivateKeyFile: ./encrypted_private_key.json
+  PasswordFile: ./password.txt
+
+ssv:
+  Network: mainnet
+
+eth2:
+  BeaconNodeAddr: http://localhost:5052
+
+eth1:
+  ETH1Addr: ws://localhost:8546/ws
+```
+
+## Mode 3: Convert Existing Key to Encrypted Format
+
+If you already have a raw operator key, convert it to encrypted format:
+
+### Step 1: Save Your Raw Key
+
+```bash
+echo "LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQ..." > raw_operator_key.txt
+```
+
+### Step 2: Create Password File
+
+```bash
+echo "YourSecurePassword123!" > password.txt
+chmod 600 password.txt
+```
+
+### Step 3: Convert to Encrypted Keystore
+
+```bash
+./bin/ssvnode generate-operator-keys \
+  --operator-key-file=raw_operator_key.txt \
+  --password-file=password.txt
+```
+
+### Output
+
+```
+private key encrypted and stored in encrypted_private_key.json
+```
+
+The encrypted keystore is created with the **same keys** as your raw key, now securely encrypted.
+
+## Security Best Practices
+
+<AccordionGroup>
+  <Accordion title="Password Security">
+    - Use strong, unique passwords (minimum 12 characters)
+    - Never reuse passwords across operators
+    - Store password files separately from keystore files
+    - Use password managers for production environments
+    - Set restrictive permissions: `chmod 600 password.txt`
+  </Accordion>
+
+  <Accordion title="Keystore File Protection">
+    ```bash
+    # Set restrictive permissions on keystore
+    chmod 600 encrypted_private_key.json
+    
+    # Verify permissions
+    ls -la encrypted_private_key.json
+    # Should show: -rw------- (only owner can read/write)
+    ```
+  </Accordion>
+
+  <Accordion title="Backup Procedures">
+    **What to backup:**
+    - `encrypted_private_key.json` (encrypted keystore)
+    - `password.txt` (password file)
+    - Public key (from initial generation or from keystore)
+    
+    **Backup storage:**
+    - Store backups in separate, secure locations
+    - Use encrypted backup solutions
+    - Never commit to version control systems
+    - Consider hardware security modules (HSM) for production
+  </Accordion>
+
+  <Accordion title="Never Use Raw Keys in Production">
+    ❌ **Bad** - Raw key in config:
+    ```yaml
+    OperatorPrivateKey: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQ...
+    ```
+    
+    ✅ **Good** - Encrypted keystore:
+    ```yaml
+    KeyStore:
+      PrivateKeyFile: ./encrypted_private_key.json
+      PasswordFile: ./password.txt
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Examples
+
+### Generate New Encrypted Operator Key
+
+```bash
+# Create password file
+echo "MySecurePassword123!" > password.txt
+
+# Generate encrypted keystore
+./bin/ssvnode generate-operator-keys --password-file=password.txt
+
+# Verify keystore was created
+ls -la encrypted_private_key.json
+
+# Extract public key from keystore for registration
+jq -r '.pubkey' encrypted_private_key.json
+```
+
+### Convert Raw Key to Encrypted
+
+```bash
+# You have a raw key from earlier generation
+cat raw_key.txt
+# LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQ...
+
+# Create password file
+echo "MySecurePassword123!" > password.txt
+
+# Convert to encrypted keystore
+./bin/ssvnode generate-operator-keys \
+  --operator-key-file=raw_key.txt \
+  --password-file=password.txt
+
+# Remove raw key file (no longer needed)
+shred -u raw_key.txt
+```
+
+### Generate with Legacy Public Key Format
+
+```bash
+# For compatibility with older SSV versions
+./bin/ssvnode generate-operator-keys \
+  --password-file=password.txt \
+  --legacy-pubkey
+
+# Keystore will use "pubKey" instead of "pubkey"
+jq '.pubKey' encrypted_private_key.json
+```
+
+### Using Environment Variables
+
+```bash
+# Create password file from environment
+echo "$OPERATOR_PASSWORD" > /tmp/password.txt
+
+# Generate keystore
+./bin/ssvnode generate-operator-keys --password-file=/tmp/password.txt
+
+# Move to secure location
+mv encrypted_private_key.json /secure/path/
+mv /tmp/password.txt /secure/path/password.txt
+
+# Set permissions
+chmod 600 /secure/path/encrypted_private_key.json
+chmod 600 /secure/path/password.txt
+```
+
+## Output Files
+
+### Encrypted Keystore JSON
+
+When using `--password-file`, the command creates `encrypted_private_key.json`:
+
+| Field | Description |
+|-------|-------------|
+| `version` | Keystore version (4 = EIP-2335 compatible) |
+| `pubkey` | Base64-encoded public key |
+| `crypto.cipher` | Encryption algorithm (aes-128-ctr) |
+| `crypto.ciphertext` | Encrypted private key data |
+| `crypto.kdf` | Key derivation function (scrypt) |
+| `crypto.kdfparams` | KDF parameters (n, r, p, salt) |
+| `crypto.mac` | Message authentication code for verification |
+
+### Console Output
+
+Without `--password-file`, keys are printed to console:
+
+```
+generated public key (base64)  pk=LS0tLS1CRUdJTi...
+generated private key (base64) sk=LS0tLS1CRUdJTi...
+```
+
+<Warning>
+  Console output may be logged by your terminal. Use encrypted keystores to avoid exposing keys.
+</Warning>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Failed to read password file">
+    ```
+    Failed to read password file: no such file or directory
+    ```
+    
+    **Solution**: Ensure the password file exists and path is correct:
+    ```bash
+    ls -la password.txt
+    ./bin/ssvnode generate-operator-keys --password-file=./password.txt
+    ```
+  </Accordion>
+
+  <Accordion title="Failed to parse private key">
+    ```
+    Failed to parse private key
+    ```
+    
+    **Solution**: Ensure your operator key file contains valid base64-encoded RSA key:
+    ```bash
+    # Check file contents
+    cat raw_key.txt
+    # Should start with: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQ==
+    ```
+  </Accordion>
+
+  <Accordion title="Permission denied">
+    ```
+    Failed to save private key: permission denied
+    ```
+    
+    **Solution**: Check write permissions in current directory:
+    ```bash
+    # Check permissions
+    ls -ld .
+    
+    # Or specify writable directory
+    cd /path/to/writable/directory
+    ./bin/ssvnode generate-operator-keys --password-file=password.txt
+    ```
+  </Accordion>
+
+  <Accordion title="Empty password file">
+    If your password file is empty, the encryption will still work but with an empty password:
+    
+    ```bash
+    # Verify password file has content
+    cat password.txt
+    # Should output your password
+    
+    # Check file size
+    wc -c password.txt
+    # Should be > 0 bytes
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Using Generated Keys
+
+### In Configuration File
+
+```yaml config.yaml
+# Recommended: Use encrypted keystore
+KeyStore:
+  PrivateKeyFile: ./encrypted_private_key.json
+  PasswordFile: ./password.txt
+
+# OR (not recommended for production)
+OperatorPrivateKey: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQ...
+```
+
+### Extract Public Key
+
+Your public key is needed for operator registration:
+
+```bash
+# From encrypted keystore
+jq -r '.pubkey' encrypted_private_key.json
+
+# From raw generation (saved during initial output)
+echo "LS0tLS1CRUdJTiBSU0EgUFVCTElDIEtFWS0tLS0t..."
+```
+
+## See Also
+
+- [start-node](/cli/start-node) - Start your SSV node
+- [Running a Node](/operations/running-a-node) - Start your operator node
+- [Security Best Practices](/deployment/security) - Secure your operator
