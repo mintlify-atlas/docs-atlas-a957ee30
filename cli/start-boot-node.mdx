@@ -1,0 +1,256 @@
+---
+title: 'start-boot-node'
+description: 'Start a bootstrap node for SSV network discovery'
+icon: 'server'
+---
+
+## Overview
+
+The `start-boot-node` command starts a bootstrap node that helps SSV operators discover peers on the network. Bootstrap nodes don't participate in validator duties - they only facilitate peer discovery via discv5.
+
+<Note>
+Bootstrap nodes are optional infrastructure for the SSV network. Most operators should use `start-node` instead.
+</Note>
+
+## Usage
+
+```bash
+ssvnode start-boot-node [flags]
+```
+
+## When to Run a Bootstrap Node
+
+Bootstrap nodes are useful for:
+- **Network operators** - Running dedicated discovery infrastructure
+- **Private networks** - Facilitating peer discovery in isolated environments
+- **Testing** - Setting up controlled test networks
+
+## Flags
+
+<ParamField path="--config" type="string" default="./config/config.yaml" required>
+  Path to the configuration file (YAML format).
+  
+  ```bash
+  ssvnode start-boot-node --config=/path/to/config.yaml
+  ```
+</ParamField>
+
+<ParamField path="--discovery-type" type="string" default="discv5">
+  Discovery protocol to use. Currently only `discv5` is supported.
+  
+  ```bash
+  ssvnode start-boot-node --discovery-type=discv5
+  ```
+</ParamField>
+
+<ParamField path="--external-ip" type="string">
+  External IP address to advertise to peers. Auto-detected if not specified.
+  
+  ```bash
+  ssvnode start-boot-node --external-ip=203.0.113.42
+  ```
+</ParamField>
+
+<ParamField path="--port" type="int" default="12001">
+  UDP port for discv5 discovery.
+  
+  ```bash
+  ssvnode start-boot-node --port=12001
+  ```
+</ParamField>
+
+<ParamField path="--tcp-port" type="int" default="13001">
+  TCP port for libp2p connections.
+  
+  ```bash
+  ssvnode start-boot-node --tcp-port=13001
+  ```
+</ParamField>
+
+<ParamField path="--network-private-key" type="string" required>
+  Private key for the node's network identity (hex-encoded).
+  
+  ```bash
+  ssvnode start-boot-node --network-private-key=0x1234...
+  ```
+  
+  <Warning>Keep this key secure. It identifies your bootstrap node on the network.</Warning>
+</ParamField>
+
+## Configuration Example
+
+Create a minimal `bootnode.yaml` configuration:
+
+```yaml bootnode.yaml
+# P2P Configuration
+p2p:
+  UdpPort: 12001
+  TcpPort: 13001
+  Discovery: discv5
+  
+  # Your bootnode's network private key
+  NetworkPrivateKey: "0x1234567890abcdef..."
+
+# Optional: Specify external IP if auto-detection fails
+# ExternalIP: "203.0.113.42"
+```
+
+## Starting the Bootstrap Node
+
+<Steps>
+  <Step title="Generate Network Key">
+    Generate a unique network private key for your bootstrap node:
+    
+    ```bash
+    openssl rand -hex 32
+    ```
+    
+    Add this key to your configuration file.
+  </Step>
+  
+  <Step title="Configure Ports">
+    Ensure UDP port 12001 and TCP port 13001 are open in your firewall:
+    
+    ```bash
+    # UFW
+    sudo ufw allow 12001/udp
+    sudo ufw allow 13001/tcp
+    
+    # iptables
+    sudo iptables -A INPUT -p udp --dport 12001 -j ACCEPT
+    sudo iptables -A INPUT -p tcp --dport 13001 -j ACCEPT
+    ```
+  </Step>
+  
+  <Step title="Start the Node">
+    Launch the bootstrap node:
+    
+    ```bash
+    ssvnode start-boot-node --config=bootnode.yaml
+    ```
+    
+    The node will start and begin accepting discovery requests.
+  </Step>
+  
+  <Step title="Get Your ENR">
+    The bootstrap node will print its ENR (Ethereum Node Record) on startup:
+    
+    ```
+    Bootstrap node started with ENR: enr:-Jq4QN...
+    Listening on: /ip4/0.0.0.0/tcp/13001
+    ```
+    
+    Share this ENR with operators who want to use your bootstrap node.
+  </Step>
+</Steps>
+
+## Using a Bootstrap Node
+
+Operators can connect to your bootstrap node by adding it to their configuration:
+
+```yaml operator-config.yaml
+p2p:
+  Bootnodes:
+    - "enr:-Jq4QN...your-bootnode-enr..."
+```
+
+## Monitoring
+
+Bootstrap nodes expose the same health endpoints as regular nodes:
+
+```bash
+# Check if the bootnode is running
+curl http://localhost:16000/v1/node/health
+
+# View connected peers
+curl http://localhost:16000/v1/node/peers | jq '.peers | length'
+```
+
+## Docker Deployment
+
+Run a bootstrap node using Docker:
+
+```yaml docker-compose.yml
+version: '3.8'
+services:
+  ssv-bootnode:
+    image: ssvlabs/ssv-node:latest
+    command: start-boot-node --config=/config/bootnode.yaml
+    ports:
+      - "12001:12001/udp"
+      - "13001:13001/tcp"
+      - "16000:16000"  # Metrics
+    volumes:
+      - ./bootnode.yaml:/config/bootnode.yaml:ro
+    restart: unless-stopped
+```
+
+Start the bootstrap node:
+
+```bash
+docker-compose up -d ssv-bootnode
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Bootstrap node not discoverable">
+    **Symptoms**: Operators can't discover the bootstrap node
+    
+    **Solutions**:
+    - Verify firewall rules allow UDP 12001
+    - Check that external IP is correctly configured
+    - Ensure ENR is being shared correctly
+    - Test connectivity: `nc -zvu <your-ip> 12001`
+  </Accordion>
+  
+  <Accordion title="No peers connecting">
+    **Symptoms**: `/v1/node/peers` shows 0 peers
+    
+    **Solutions**:
+    - Bootstrap nodes are discovery-only - low peer counts are normal
+    - Verify operators have added your ENR to their bootnodes list
+    - Check logs for discovery errors
+  </Accordion>
+  
+  <Accordion title="High resource usage">
+    **Symptoms**: Bootstrap node using excessive CPU/memory
+    
+    **Solutions**:
+    - Bootstrap nodes should use minimal resources
+    - Check for DDoS attacks or discovery spam
+    - Rate-limit discovery requests at the firewall level
+  </Accordion>
+</AccordionGroup>
+
+## Security Considerations
+
+<Warning>
+Bootstrap nodes are public infrastructure and may be targets for attacks:
+
+- **DDoS Protection**: Rate-limit UDP traffic to port 12001
+- **Key Management**: Keep network private keys secure but not as sensitive as operator keys
+- **Monitoring**: Alert on unusual traffic patterns or connection attempts
+- **Updates**: Keep the node software up to date for security patches
+</Warning>
+
+## Differences from Regular Nodes
+
+| Feature | Bootstrap Node | Operator Node |
+|---------|---------------|---------------|
+| Participates in duties | ❌ No | ✅ Yes |
+| Requires operator keys | ❌ No | ✅ Yes |
+| Requires beacon node | ❌ No | ✅ Yes |
+| Facilitates discovery | ✅ Yes | ✅ Yes |
+| Stores validator shares | ❌ No | ✅ Yes |
+| Resource requirements | Low | High |
+
+## See Also
+
+- [start-node](/cli/start-node) - Run a full SSV operator node
+- [Configuration Reference](/getting-started/configuration) - P2P configuration options
+- [Network Topology](/concepts/network-topology) - Understanding SSV networking
+
+## Source Reference
+
+Implementation: `cli/bootnode/boot_node.go`

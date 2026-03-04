@@ -94,7 +94,8 @@
             "pages": [
               "api/node/health",
               "api/node/identity",
-              "api/node/peers"
+              "api/node/peers",
+              "api/node/topics"
             ]
           },
           {
@@ -123,6 +124,7 @@
             "pages": [
               "cli/overview",
               "cli/start-node",
+              "cli/start-boot-node",
               "cli/generate-operator-keys",
               "cli/create-threshold",
               "cli/export-keys"

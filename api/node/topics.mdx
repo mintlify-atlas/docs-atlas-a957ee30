@@ -1,0 +1,153 @@
+---
+title: 'GET /v1/node/topics'
+description: 'Get subscribed GossipSub topics and their peer lists'
+---
+
+## Overview
+
+Returns the list of GossipSub topics the SSV node is subscribed to, along with the peers subscribed to each topic. This is useful for debugging P2P connectivity and verifying proper topic subscription.
+
+## Endpoint
+
+```
+GET /v1/node/topics
+```
+
+## Authentication
+
+No authentication required.
+
+## Response
+
+<ResponseField name="all_peers" type="array">
+  Array of all peer IDs connected to the node
+
+  <Expandable title="peer object">
+    <ResponseField name="peer_id" type="string">
+      Libp2p peer ID
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="peers_by_topic" type="array">
+  Array of topic subscription information
+
+  <Expandable title="topic object">
+    <ResponseField name="topic_name" type="string">
+      GossipSub topic name (format: `ssv.v2.<network>.<validator_pubkey>`)
+    </ResponseField>
+
+    <ResponseField name="peers" type="array">
+      Array of peer IDs subscribed to this topic
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Example Request
+
+```bash cURL
+curl http://localhost:16000/v1/node/topics
+```
+
+## Example Response
+
+```json
+{
+  "all_peers": [
+    "16Uiu2HAm...",
+    "16Uiu2HAk...",
+    "16Uiu2HAj..."
+  ],
+  "peers_by_topic": [
+    {
+      "topic_name": "ssv.v2.mainnet.0x8e01234...",
+      "peers": [
+        "16Uiu2HAm...",
+        "16Uiu2HAk..."
+      ]
+    },
+    {
+      "topic_name": "ssv.v2.mainnet.0x9f56789...",
+      "peers": [
+        "16Uiu2HAj...",
+        "16Uiu2HAk..."
+      ]
+    }
+  ]
+}
+```
+
+## Use Cases
+
+### Verify Topic Subscription
+
+Check that your node is subscribed to the correct topics for your validators:
+
+```bash
+curl -s http://localhost:16000/v1/node/topics | jq '.peers_by_topic[].topic_name'
+```
+
+### Monitor Peer Distribution
+
+Ensure peers are distributed across your validator topics:
+
+```bash
+curl -s http://localhost:16000/v1/node/topics | \
+  jq '.peers_by_topic[] | "\(.topic_name): \(.peers | length) peers"'
+```
+
+### Debug Connectivity Issues
+
+If a validator isn't receiving duties, check if peers are subscribed to its topic:
+
+```bash
+curl -s http://localhost:16000/v1/node/topics | \
+  jq '.peers_by_topic[] | select(.topic_name | contains("0x8e01234")) | .peers | length'
+```
+
+## Topic Name Format
+
+SSV uses a hierarchical topic naming scheme:
+
+```
+ssv.v2.<network>.<validator_pubkey>
+```
+
+Where:
+- `v2` - SSV protocol version
+- `<network>` - Ethereum network name (mainnet, holesky, etc.)
+- `<validator_pubkey>` - Validator public key (first 8 characters)
+
+## Troubleshooting
+
+### No Topics Listed
+
+If `peers_by_topic` is empty:
+- Node hasn't loaded validator shares yet
+- Check that validator share files are in the correct location
+- Verify the node has synced contract events
+
+### Low Peer Count per Topic
+
+If topics have fewer than 3-4 peers:
+- Check network connectivity and firewall rules
+- Verify discovery is working (`/v1/node/peers`)
+- Ensure your node is advertising correct multiaddrs
+
+### Topics for Unknown Validators
+
+If you see topics for validators you don't manage:
+- This is normal - nodes may briefly subscribe to topics during network discovery
+- Only topics with consistent peer presence indicate managed validators
+
+## Related Endpoints
+
+- [Node Identity](/api/node/identity) - Get node's peer ID and addresses
+- [Peers](/api/node/peers) - List all connected peers
+- [Health Check](/api/node/health) - Overall node health status
+
+## Source Reference
+
+Implementation: `api/handlers/node/node.go:68` (Topics method)
+
+Topic indexing: `network/topics/` package
