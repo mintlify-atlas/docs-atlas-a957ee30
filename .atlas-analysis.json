@@ -1,0 +1,138 @@
+{
+  "projectType": "infrastructure",
+  "projectName": "SSV Node",
+  "projectDescription": "Secure and scalable staking infrastructure powering distributed Ethereum validators using MPC threshold schemes and Byzantine fault-tolerant consensus",
+  "theme": "aspen",
+  "primaryColor": "#2cb4fc",
+  "lightColor": "#0c0c54",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "introduction",
+              "architecture"
+            ]
+          },
+          {
+            "group": "Getting Started",
+            "pages": [
+              "getting-started/installation",
+              "getting-started/quick-start",
+              "getting-started/configuration"
+            ]
+          },
+          {
+            "group": "Node Operations",
+            "pages": [
+              "operations/running-a-node",
+              "operations/operator-keys",
+              "operations/validator-management",
+              "operations/local-development"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/secret-sharing",
+              "concepts/consensus",
+              "concepts/network-topology",
+              "concepts/duties"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/docker",
+              "deployment/production",
+              "deployment/security"
+            ]
+          },
+          {
+            "group": "Monitoring",
+            "pages": [
+              "monitoring/metrics",
+              "monitoring/logging",
+              "monitoring/troubleshooting"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api/introduction"
+            ]
+          },
+          {
+            "group": "Node API",
+            "pages": [
+              "api/node/health",
+              "api/node/identity",
+              "api/node/peers"
+            ]
+          },
+          {
+            "group": "Validator API",
+            "pages": [
+              "api/validators/list",
+              "api/validators/status"
+            ]
+          },
+          {
+            "group": "Exporter API",
+            "pages": [
+              "api/exporter/overview",
+              "api/exporter/decided",
+              "api/exporter/committee"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "CLI Reference",
+        "groups": [
+          {
+            "group": "Commands",
+            "pages": [
+              "cli/overview",
+              "cli/start-node",
+              "cli/generate-operator-keys",
+              "cli/create-threshold",
+              "cli/export-keys"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Distributed Validator Technology (DVT) using Secret Shared Validators",
+    "Byzantine Fault Tolerant consensus with Istanbul BFT (iBFT)",
+    "Multi-operator validator management with MPC threshold schemes",
+    "P2P networking with libp2p and discovery via discv5",
+    "Support for Ethereum consensus layer duties (attestation, proposal, sync committee)",
+    "Slashing protection and fault tolerance",
+    "Prometheus metrics and monitoring",
+    "Docker-based deployment and local development clusters"
+  ],
+  "publicApiSurface": [
+    "start-node - Start an SSV operator node",
+    "start-boot-node - Start a bootstrap node for network discovery",
+    "generate-operator-keys - Generate operator key pairs",
+    "create-threshold - Split validator keys using Shamir Secret Sharing",
+    "export-keys - Export validator keys from mnemonic",
+    "GET /health - Node health check endpoint",
+    "GET /v1/node/identity - Get node identity and public key",
+    "GET /v1/node/peers - List connected peers",
+    "GET /v1/validators - List managed validators",
+    "GET /v1/validators/{pubkey} - Get validator status"
+  ]
+}
